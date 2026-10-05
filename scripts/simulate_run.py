@@ -2,8 +2,9 @@
 
   simulate_run.py --run reference/run-e1m1-b --out data/sim-e1m1 --tics 1200
 
-Only tic 0 and the player's commands come from the recorded run; every tic
-after that is computed by Sail (saildoom/game.py, sql/tic_*.sql). The result
+Only the player's commands come from the recorded run: tic 0 is Sail's own
+level start (sql/level_start.sql) from the map's tables, and every tic after
+that is computed by Sail (saildoom/game.py, sql/tic_*.sql). The result
 is written the way reference/record_run.py writes a CedarDB run -- per-tic
 state tables, poses.json, run.json -- so reference/compare_batch.py renders it
 on Sail and compares every frame with CedarDB's (`frames` links to the
@@ -58,7 +59,7 @@ def main():
     spark = game.connect()
     run = game.load_run_for_tics(spark, args.data, args.run)
     t0 = time.perf_counter()
-    world = game.simulate(spark, run, args.tics, args.run)
+    world = game.simulate(spark, run, args.tics, args.run, data=args.data)
     print(f"simulated {args.tics} tics on Sail in {time.perf_counter() - t0:.1f} s", flush=True)
 
     out = args.out

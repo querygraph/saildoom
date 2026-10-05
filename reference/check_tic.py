@@ -95,7 +95,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", type=Path, default=ROOT / "reference/run-e1m1-b")
     ap.add_argument("--data", type=Path, default=ROOT / "data/freedoom1")
-    ap.add_argument("--mode", choices=("step", "recursive"), default="step")
+    ap.add_argument("--mode", choices=("step", "recursive", "played"), default="step",
+                    help="played: recursive from Sail's own level start, nothing from the recording but the commands")
     ap.add_argument("--tics", type=int, default=None)
     args = ap.parse_args()
 
@@ -106,8 +107,10 @@ def main():
     t0 = time.perf_counter()
     if args.mode == "step":
         got = game.step_all(spark, run, args.tics, args.run)
-    else:
+    elif args.mode == "recursive":
         got = game.simulate(spark, run, args.tics, args.run)
+    else:
+        got = game.simulate(spark, run, args.tics, args.run, data=args.data)
     rows = sum(len(v) for v in got.values())
     print(f"{args.mode}: {rows} rows in {(time.perf_counter() - t0) * 1000:.0f} ms")
     want = game.recorded(spark, run, args.tics, args.run)

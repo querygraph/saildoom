@@ -126,11 +126,19 @@ def step_all(spark, run, tics, run_dir):
     return _fetch(spark, expand(sql, _params(run)))
 
 
-def simulate(spark, run, tics, run_dir):
-    """The run as one recursive query: tic 0 from the recording, then the tic."""
+def simulate(spark, run, tics, run_dir, data=None):
+    """The run as one recursive query: tic 0 from the recording, or with
+    `data` (the map's tables) from Sail's own level start; then the tic."""
     world = _world(run_dir)
+    params = _params(run)
+    if data is not None:
+        start, flags = _level_start_sql(spark, data, run, run_dir)
+        anchor = f"SELECT * FROM (\n{start}\n) level_start"
+        params.update(skill=run.skill, **flags)
+    else:
+        anchor = _recorded(world, "tic = 0")
     sql = f"""WITH RECURSIVE world AS (
-  {_recorded(world, "tic = 0")}
+  {anchor}
   UNION ALL
   SELECT * FROM (
     WITH RECURSIVE prev AS (SELECT * FROM world),
@@ -140,7 +148,40 @@ def simulate(spark, run, tics, run_dir):
   WHERE s.tic <= {tics}
 )
 SELECT * FROM world"""
-    return _fetch(spark, expand(sql, _params(run)))
+    return _fetch(spark, expand(sql, params))
+
+
+MAP_TABLES = ("sectors", "sidedefs", "render_segs", "things", "render_things", "line_buttons")
+
+
+def run_cheats(run_dir):
+    """The cheats reference/record_run.py typed before tic 1."""
+    meta = json.loads((Path(run_dir) / "run.json").read_text())
+    tour = meta.get("tour", (Path(run_dir) / "tour.json").exists())
+    return {"god": not meta.get("mortal", False), "noclip": bool(tour),
+            "arsenal": True, "keys": True}
+
+
+def _level_start_sql(spark, data, run, run_dir, cheats=None):
+    for name in MAP_TABLES:
+        df = spark.read.parquet(str(Path(data) / f"{name}.parquet")).filter(f"map_id = {run.map_id}")
+        df.createOrReplaceTempView("map_" + name)
+    world = _world(run_dir)
+    cheats = cheats or run_cheats(run_dir)
+    body = strip_comments((ROOT / "sql" / "level_start.sql").read_text())
+    packed = "\n  UNION ALL\n  ".join(
+        world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic") for kind in KINDS)
+    sql = (f"WITH RECURSIVE prev AS (\n  {_recorded(world, 'tic < 0')}\n),\n"
+           + world.unpack_ctes("prev") + ",\n" + body.strip().rstrip(",") + ","
+           + f"\nstep AS (\n  {packed}\n)\nSELECT * FROM step")
+    return sql, {k: str(v).upper() for k, v in cheats.items()}
+
+
+def level_start(spark, data, run, run_dir, cheats=None):
+    """The world at tic 0, computed on Sail from the map's tables
+    (sql/level_start.sql), as {kind: [rows]}."""
+    sql, flags = _level_start_sql(spark, data, run, run_dir, cheats)
+    return _fetch(spark, expand(sql, dict(_params(run), skill=run.skill, **flags)))
 
 
 def recorded(spark, run, tics, run_dir):

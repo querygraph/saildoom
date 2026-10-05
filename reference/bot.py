@@ -253,7 +253,7 @@ class TourBot:
     level would end), and at most `per_mechanic` lines of each mechanic are
     visited, nearest first, so one run covers every mechanic the map has."""
 
-    def __init__(self, data, map_id, per_mechanic=3, timeout=240):
+    def __init__(self, data, map_id, per_mechanic=3, timeout=240, mechanics=None):
         def table(name):
             t = pq.read_table(Path(data) / f"{name}.parquet")
             if "map_id" in t.column_names:
@@ -265,6 +265,8 @@ class TourBot:
         for ld in table("linedefs"):
             d = defs.get(ld["special"])
             if d is None or d["mechanic"] is None or ld["special"] in EXIT_SPECIALS:
+                continue
+            if mechanics and d["mechanic"] not in mechanics:
                 continue
             how = ("use" if d["use_activated"] else "cross" if d["cross_activated"]
                    else "shoot" if d["shoot_activated"] else None)
@@ -316,7 +318,7 @@ class TourBot:
     def command(self, tic, skill, monsters=(), sector=None):
         if self.plan is None:
             self._make_plan()
-        fwd, strafe, turn, run, attack, use = 0.0, 0.0, 0.0, False, False, False
+        fwd, strafe, turn, run, attack, use = 0.0, 0.0, 0.0, True, False, False
         if self.current is None and self.plan:
             self.current, self.stage, self.since = self.plan.pop(0), 0, tic
         t = self.current

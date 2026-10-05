@@ -93,6 +93,8 @@ def main():
     ap.add_argument("--data", type=Path, default=Path(__file__).resolve().parents[1] / "data/freedoom1")
     ap.add_argument("--tour", action="store_true",
                     help="IDCLIP on, and visit every kind of special line (bot.TourBot)")
+    ap.add_argument("--mechanics", help="comma-separated: the tour visits only these")
+    ap.add_argument("--mortal", action="store_true", help="no IDDQD: the player takes damage and can die")
     args = ap.parse_args()
     sys.path.insert(0, str(args.sqldoom))
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -111,14 +113,15 @@ def main():
     sql.prepare_renderer(cur, map_id, player, args.skill)
     # The bot plays with god mode and every weapon (shotgun selected below);
     # it still walks with clipping on.
-    for code in ("IDDQD", "IDKFA") + (("IDCLIP",) if args.tour else ()):
+    for code in (() if args.mortal else ("IDDQD",)) + ("IDKFA",) + (("IDCLIP",) if args.tour else ()):
         sql.cheat_code(cur, map_id, player, code)
 
     from bot import Bot, TourBot
     snaps = Snapshots()
     poses = []
     commands = []
-    bot = TourBot(args.data, map_id) if args.tour else Bot(args.data, map_id)
+    bot = (TourBot(args.data, map_id, mechanics=set(args.mechanics.split(",")) if args.mechanics else None)
+           if args.tour else Bot(args.data, map_id))
     started = time.perf_counter()
     for tic in range(0, args.tics + 1):
         if tic > 0:
@@ -155,6 +158,7 @@ def main():
     if args.tour:
         (out / "tour.json").write_text(json.dumps(bot.done, indent=1))
     (out / "run.json").write_text(json.dumps({
+        "mortal": args.mortal, "tour": args.tour,
         "map": args.map, "map_id": map_id, "player_thing_id": player,
         "skill": args.skill, "tics": args.tics}))
 
