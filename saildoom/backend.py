@@ -204,7 +204,17 @@ def install(doom_sql, backend):
         return None
 
     def execute_prepared(cur, name, params=()):
-        cur.rows = [tuple(r) for r in backend.call(name, tuple(params))]
+        if name == "doom_render_frame_folded":
+            # Prepared for one (map, player, skill) on this connection.
+            params = doom_sql._RENDER_FOLDED[id(cur.connection)] + tuple(params)
+        lock = getattr(backend, "lock", None)
+        if name.startswith("doom_render_frame") or lock is None:
+            rows = backend.call(name, tuple(params))
+        else:
+            with lock:
+                rows = backend.call(name, tuple(params))
+        cur.rows = [tuple(r) for r in rows]
+        cur.description = [("c",)] if cur.rows else None
 
     doom_sql.prepare_statement = prepare_statement
     doom_sql.execute_prepared = execute_prepared
