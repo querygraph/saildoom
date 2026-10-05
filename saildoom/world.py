@@ -26,6 +26,16 @@ KINDS = {
     "B": ("b", "line_buttons"),
     "D": ("d", "sidedefs"),
     "R": ("r", "render_segs"),
+    "T": ("t", "things"),
+    "H": ("h", "thing_health"),
+    "I": ("i", "monster_ai"),
+    "N": ("n", "render_things"),
+    "X": ("x", "world_effects"),
+    "W": ("w", "player_weapons"),
+    "O": ("o", "player_weapon_owned"),
+    "U": ("u", "picked_up_items"),
+    "L": ("l", "level_secret_discoveries"),
+    "Y": ("y", "mapped_lines"),
 }
 
 # The player row also carries the player Thing and the last movement mode.
@@ -77,12 +87,12 @@ class World:
         cols = []
         for k, (col, _) in KINDS.items():
             if k == kind:
-                parts = ", ".join(f"'{n}', CAST(x.{n} AS {t})" for n, t in self.fields[k])
+                parts = ", ".join(f"'{n}', CAST(rr.{n} AS {t})" for n, t in self.fields[k])
                 cols.append(f"named_struct({parts}) AS {col}")
             else:
                 cols.append(f"CAST(NULL AS {self.struct_type(k)}) AS {col}")
-        return (f"SELECT x.{tic} AS tic, '{kind}' AS kind, " + ", ".join(cols)
-                + f" FROM {relation} x")
+        return (f"SELECT rr.{tic} AS tic, '{kind}' AS kind, " + ", ".join(cols)
+                + f" FROM {relation} rr")
 
     def recorded_rows(self, kind, where, player_join=False):
         """World rows of one kind from the recorded rec_* tables."""

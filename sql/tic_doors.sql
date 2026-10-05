@@ -373,12 +373,11 @@ mover_pos AS (
   GROUP BY l.ntic
 ),
 occupied AS (
-  SELECT DISTINCT ai.tic + 1 AS ntic, COALESCE(ai.sector_id, rt.sector_id) AS sector_id
-  FROM rec_monster_ai ai
-  JOIN rec_thing_health h ON h.tic = ai.tic AND h.map_id = ai.map_id AND h.thing_id = ai.thing_id AND h.alive
-  JOIN rec_render_things rt ON rt.tic = ai.tic AND rt.map_id = ai.map_id AND rt.thing_id = ai.thing_id
-  JOIN doors_run dr ON dr.ntic = ai.tic + 1
-  WHERE ai.map_id = ${map_id}
+  SELECT DISTINCT ai.ntic, COALESCE(ai.sector_id, rt.sector_id) AS sector_id
+  FROM I0 ai
+  JOIN H0 h ON h.ntic = ai.ntic AND h.thing_id = ai.thing_id AND h.alive
+  JOIN N0 rt ON rt.ntic = ai.ntic AND rt.thing_id = ai.thing_id
+  JOIN doors_run dr ON dr.ntic = ai.ntic
 ),
 mover_step AS (
   SELECT q.*,

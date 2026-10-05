@@ -29,7 +29,10 @@ FIELDS = ("position_x", "position_y", "base_z", "view_z", "view_angle",
 # kind -> the columns that identify a row within a tic
 KEYS = {"S": ("id",), "M": ("sector_id",), "E": ("player_thing_id", "line_id", "trigger_type"),
         "A": ("line_id",), "B": ("line_id", "sidedef_id", "texture_part"), "D": ("id",),
-        "R": ("seg_id",)}
+        "R": ("seg_id",), "T": ("id",), "H": ("thing_id",), "I": ("thing_id",),
+        "N": ("thing_id",), "X": ("effect_id",), "W": ("player_thing_id",),
+        "O": ("player_thing_id", "weapon_id"), "U": ("thing_id",),
+        "L": ("player_thing_id", "sector_id"), "Y": ("line_id",)}
 
 
 def same(a, b):
@@ -89,10 +92,10 @@ def check_table(kind, key, got, want, tics):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--run", type=Path, default=ROOT / "reference/run-e1m1")
+    ap.add_argument("--run", type=Path, default=ROOT / "reference/run-e1m1-b")
     ap.add_argument("--data", type=Path, default=ROOT / "data/freedoom1")
     ap.add_argument("--mode", choices=("step", "recursive"), default="step")
-    ap.add_argument("--tics", type=int, default=525)
+    ap.add_argument("--tics", type=int, default=1200)
     args = ap.parse_args()
 
     spark = game.connect()

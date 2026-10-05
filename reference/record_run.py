@@ -30,7 +30,13 @@ STATE_TABLES = (
     # Not read by the renderer; the tic port needs them.
     "sector_movers", "game_tic_commands", "line_special_events",
     "line_activations", "line_buttons", "sidedefs",
+    # What the later stages of a tic write.
+    "hitscan_hits", "pickup_grants", "pickup_touches", "level_secret_discoveries",
+    "mapped_lines", "projectile_impacts", "monster_steps", "monster_deaths",
+    "projectile_damage", "monster_attack_damage", "level_stats", "line_use_results",
 )
+# The weapon the bot selects at a tic: shotgun, chaingun, rocket launcher, shotgun.
+WEAPON_SWITCHES = {2: 3, 350: 4, 700: 5, 1000: 3}
 
 OID_TYPES = {
     16: pa.bool_(), 17: pa.binary(), 18: pa.string(), 19: pa.string(),
@@ -115,15 +121,15 @@ def main():
     for tic in range(0, args.tics + 1):
         if tic > 0:
             cur.execute(
-                "SELECT t.x, t.y FROM things t JOIN thing_health h"
+                "SELECT t.id, t.x, t.y FROM things t JOIN thing_health h"
                 " ON h.map_id = t.map_id AND h.thing_id = t.id"
                 " WHERE t.map_id = %s AND h.alive AND t.id <> %s", (map_id, player))
             monsters = cur.fetchall()
             cur.execute("SELECT sector_id FROM player_state WHERE map_id = %s AND player_thing_id = %s",
                         (map_id, player))
             command = list(bot.command(tic, args.skill, monsters, cur.fetchone()[0]))
-            if tic == 2:
-                command[6] = 3   # the shotgun
+            if tic in WEAPON_SWITCHES:
+                command[6] = WEAPON_SWITCHES[tic]
             command = tuple(command)
             commands.append({"tic": tic, "command": list(command)})
             sql.execute_game_tic(cur, map_id, player, command)

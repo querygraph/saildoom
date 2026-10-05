@@ -1,13 +1,13 @@
 -- One 35 Hz game tic of SQLDoom, in Spark SQL: the player's part, after
--- tic_doors.sql (clock, use, specials, movers) and before the outputs.
+-- tic_doors.sql (clock, use, specials, movers) and before tic_combat.sql.
 --
 -- Ported from cedardb/sqldoom sql/runtime/functions: 14_cs_movement_mode
 -- (which movement runs), 16_cs_turn (turning in place), 15_cs_move
 -- (P_MovePlayer, P_TryMove, P_ZMovement, the view bob), 02_geometry's
 -- doom_sector_at and 18_cs_cross (the player's line crossings). Sectors and
--- movers come from tic_doors (S2, M2); the stages not ported yet (monsters,
--- pickups ...) are read from the recorded run: rec_things and rec_thing_health
--- at tic t, as SQLDoom's tic order sees them when the player moves.
+-- movers come from tic_doors (S2, M2), Things and their health from the
+-- start of the tic (T0, H0), as SQLDoom's tic order sees them when the
+-- player moves.
 --
 -- player_state and things store positions, angles and momenta as `real`;
 -- values are computed in double and stored through CAST(... AS FLOAT), as the
@@ -105,9 +105,9 @@ blocking_things AS (
   SELECT r.ntic, CAST(tt.x AS DOUBLE) AS tx, CAST(tt.y AS DOUBLE) AS ty,
          CAST(COALESCE(cd.radius, bd.radius) + ${PLAYER_RADIUS} AS DOUBLE) AS blockdist
   FROM reach r
-  JOIN rec_things tt ON tt.tic = r.ntic - 1 AND tt.map_id = ${map_id}
+  JOIN T0 tt ON tt.ntic = r.ntic
   LEFT JOIN thing_combat_defs cd ON cd.thing_type = tt.type
-  LEFT JOIN rec_thing_health hh ON hh.tic = r.ntic - 1 AND hh.map_id = tt.map_id AND hh.thing_id = tt.id
+  LEFT JOIN H0 hh ON hh.ntic = r.ntic AND hh.thing_id = tt.id
   LEFT JOIN thing_blocking_defs bd ON bd.thing_type = tt.type
   WHERE tt.id <> ${player}
     AND ((cd.thing_type IS NOT NULL AND hh.alive)
@@ -336,22 +336,3 @@ cross_events AS (
     AND c.v1_side * c.v2_side < 0
     AND NOT (COALESCE(c.cross_once, FALSE) AND a.line_id IS NOT NULL)
 ),
--- ---------------------------------------------------------------- the outputs
-P_out AS (SELECT * FROM next_world),
-S_out AS (SELECT * FROM S2),
-M_out AS (SELECT * FROM M2),
-E_out AS (
-  -- The player's crossings, and the events the unported stages (monsters
-  -- crossing lines ...) left queued at the end of the tic.
-  SELECT ntic, map_id, player_thing_id, line_id, trigger_type, from_front FROM cross_events
-  UNION ALL
-  SELECT e.tic AS ntic, e.map_id, e.player_thing_id, e.line_id, e.trigger_type, e.from_front
-  FROM rec_line_special_events e
-  JOIN (SELECT DISTINCT ntic FROM P0) t ON t.ntic = e.tic
-  WHERE e.map_id = ${map_id}
-    AND NOT (e.player_thing_id = ${player} AND e.trigger_type IN ('cross', 'use'))
-),
-A_out AS (SELECT * FROM A1),
-B_out AS (SELECT * FROM B2),
-D_out AS (SELECT * FROM D2),
-R_out AS (SELECT * FROM R2)

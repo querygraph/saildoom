@@ -15,6 +15,7 @@ Stages that are not ported yet read the recorded run (`rec_*` views).
 
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,12 +37,17 @@ CONSTANTS = {
     "MAXSTEP": "24.0D", "BLOCK_MARGIN": "2.0D", "GRAVITY": "1.0D",
     "BOB_FACTOR": "4.0D", "MAXBOB": "16.0D", "POS_EPSILON": "1e-7D",
     "BOB_PERIOD_TICS": "20.0D", "STOPSPEED": "0.0625D", "FRICTION": "0.90625D",
-    "USERANGE": "64.0D",
+    "USERANGE": "64.0D", "PSPRITE_EPSILON": "0.001D", "PSPRITE_REST_X": "1.0D",
+    "PSPRITE_REST_Y": "32.0D", "ATTACK_Z_OFFSET": "8.0D", "AIM_SPREAD_DEGREES": "5.625D",
+    "AUTOAIM_SLOPE": "0.625D", "SLOPE_UNBOUNDED": "1000000.0D", "GUNSHOT_SPREAD_UNITS": "16384.0D",
+    "DROPPED_THING_ID_BASE": "100000", "PICKUP_REACH": "36.0D", "BONUSADD": "6",
+    "MESSAGE_TICS": "140",
 }
 
 STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
                  "node_path_steps", "nodes", "render_segs", "linedefs",
-                 "line_special_defs", "sector_adjacency")
+                 "line_special_defs", "sector_adjacency", "sector_special_defs",
+                 "pickup_defs", "pickup_messages", "ammo_defs", "weapon_defs", "weapon_frames")
 
 
 @dataclass
@@ -67,24 +73,14 @@ def load_run_for_tics(spark, data, run_dir):
         df.createOrReplaceTempView(name)
     for path in sorted((Path(run_dir) / "state").glob("*.parquet")):
         spark.read.parquet(str(path)).createOrReplaceTempView("rec_" + path.stem)
-    commands = json.loads((Path(run_dir) / "commands.json").read_text())
-    skill = lambda c: c[0]
-    table = pa.table({
-        "tic": pa.array([c["tic"] for c in commands], pa.int32()),
-        "skill": pa.array([skill(c["command"]) for c in commands], pa.int32()),
-        "skill_bit": pa.array([1 if skill(c["command"]) <= 1 else 2 if skill(c["command"]) == 2 else 4
-                               for c in commands], pa.int32()),
-        "move_fwd": pa.array([c["command"][1] for c in commands], pa.float32()),
-        "move_strafe": pa.array([c["command"][2] for c in commands], pa.float32()),
-        "running": pa.array([bool(c["command"][3]) for c in commands], pa.bool_()),
-        "turn_degrees": pa.array([c["command"][4] for c in commands], pa.float32()),
-        "attack_held": pa.array([bool(c["command"][5]) for c in commands], pa.bool_()),
-        "weapon_switch_to": pa.array([c["command"][6] for c in commands], pa.int32()),
-        "use_requested": pa.array([bool(c["command"][7]) for c in commands], pa.bool_()),
-    })
-    path = ROOT / "data" / "commands.parquet"
-    pq.write_table(table, path)
-    spark.read.parquet(str(path)).createOrReplaceTempView("cmd")
+    # The commands as CedarDB stored them (game_tic_commands, real columns):
+    # the bot's floats went in as decimal text, which rounds to real directly,
+    # not through a double.
+    spark.sql(f"""SELECT tic, skill, skill_bit, move_fwd, move_strafe, running, turn_degrees,
+                         attack_held, weapon_switch_to, use_requested
+                  FROM rec_game_tic_commands
+                  WHERE map_id = {map_id} AND player_thing_id = {run["player_thing_id"]}"""
+              ).createOrReplaceTempView("cmd")
     return Run(map_id, run["player_thing_id"], run["skill"], run["tics"])
 
 
@@ -99,7 +95,7 @@ def _world(run_dir):
 def _step_sql(world):
     """The tic: CTEs from `prev` (world rows at tic t) to `step`, world rows at t + 1."""
     body = "\n".join(strip_comments((ROOT / "sql" / name).read_text()).strip().rstrip(",") + ","
-                     for name in ("tic_doors.sql", "tic_step.sql"))
+                     for name in ("tic_doors.sql", "tic_step.sql", "tic_combat.sql", "tic_out.sql"))
     packed = "\n  UNION ALL\n  ".join(
         world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic")
         for kind in KINDS)
@@ -116,7 +112,7 @@ def step_all(spark, run, tics, run_dir):
     world = _world(run_dir)
     sql = (f"WITH prev AS (\n  {_recorded(world, f'tic < {tics}')}\n),\n"
            + _step_sql(world) + "\nSELECT * FROM step")
-    return split(spark.sql(expand(sql, _params(run))).toArrow())
+    return _fetch(spark, expand(sql, _params(run)))
 
 
 def simulate(spark, run, tics, run_dir):
@@ -133,13 +129,22 @@ def simulate(spark, run, tics, run_dir):
   WHERE s.tic <= {tics}
 )
 SELECT * FROM world"""
-    return split(spark.sql(expand(sql, _params(run))).toArrow())
+    return _fetch(spark, expand(sql, _params(run)))
 
 
 def recorded(spark, run, tics, run_dir):
     world = _world(run_dir)
     sql = f"SELECT * FROM ({_recorded(world, f'tic <= {tics}')}) w"
-    return split(spark.sql(expand(sql, _params(run))).toArrow())
+    return _fetch(spark, expand(sql, _params(run)))
+
+
+def _fetch(spark, sql):
+    """Run `sql`, the server writing the rows to Parquet here (a whole run's
+    world is more than one gRPC message), and split them by kind."""
+    out = ROOT / "data" / "world-out"
+    shutil.rmtree(out, ignore_errors=True)
+    spark.sql(sql).write.parquet(str(out))
+    return split(pq.read_table(out))
 
 
 def split(table):
