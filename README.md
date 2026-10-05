@@ -12,7 +12,7 @@ Spark SQL over Spark Connect.
 |---|---|
 | Renderer | Ported: SQLDoom's 89-CTE query in Spark SQL ([`sql/renderer.sql`](sql/renderer.sql)), and a batch form that renders many frames per query ([`sql/renderer_batch.sql`](sql/renderer_batch.sql)). |
 | Exactness | On a 526-tic recorded run of Freedoom E1M1: 521 frames identical to CedarDB's in all 64,000 pixels; 5 differ by 1 to 8 pixels. In each of the 5, Sail's single-frame and batch renderers agree, and the difference traces to the last bit of a libm function (`cos`, `tan`) where Apple's libm (Sail on macOS) and glibc (CedarDB in Linux) disagree. |
-| Speed | One frame per query: 0.7 s, almost all of it Sail planning the query. Many frames per query: 43 ms a frame (about 23 frames a second) on an M1 Max with 10 cores. CedarDB renders a frame in 32 ms (Docker on the same Mac). |
+| Speed | One frame per query: 0.7 s, almost all of it Sail planning the query. Many frames per query (105): 41 ms a frame from one client; with four clients rendering concurrently, **38.8 frames a second**, above Doom's 35, on an M1 Max with 10 cores. CedarDB renders one frame in 32 ms (Docker on the same Mac). |
 | Game logic | **Not ported yet.** SQLDoom's tic (5,900 lines of CedarScript that update about 40 tables in place) still runs on CedarDB; the video below is Sail rendering every frame of a run whose world state was recorded tic by tic from SQLDoom on CedarDB. |
 
 Video: [`video/saildoom-e1m1.mp4`](video/) (every frame rendered by Sail) and

@@ -14,7 +14,9 @@ Mac as the reference. Freedoom 0.13.0 `freedoom1.wad`, E1M1, skill 2.
 | `renderer.sql`, one stream | 1,570 ms | pixel-exact |
 | the same, one-row side first in cross joins | 708 ms | pixel-exact |
 | `renderer_batch.sql`, 35 frames a query | 58 ms a frame | 10 cores |
-| `renderer_batch.sql`, 105 frames a query | 43 ms a frame | 10 cores |
+| `renderer_batch.sql`, 105 frames a query | 41 ms a frame | 10 cores, one client: 24.3 frames/s |
+| the same, 2 clients concurrently | 29.5 ms a frame | 33.9 frames/s |
+| the same, 4 clients concurrently | 25.8 ms a frame | 38.8 frames/s |
 
 ## What costs time on Sail
 
@@ -42,7 +44,8 @@ Mac as the reference. Freedoom 0.13.0 `freedoom1.wad`, E1M1, skill 2.
    filter chains stay linear (about 0.4 ms a level).
 
 Batching answers 3 for throughput: the plan is the same size for 1 or 105
-frames.
+frames. Concurrent clients overlap one batch's planning with another's
+execution, which brings the 10 cores to 38.8 frames a second.
 
 ## Exactness
 
@@ -86,11 +89,11 @@ frames.
 
 - SQLDoom's game logic on Sail. The tic is procedural (CedarScript) and
   updates about 40 tables in place; Sail has neither stored procedures nor
-  `UPDATE` on in-memory tables. The plan: the world as a set of per-tic
-  snapshot tables (the recorder already produces this shape), a tic as a
-  query that computes the next snapshot from the last one and the input, and
-  `WITH RECURSIVE` (Sail resolves recursive CTEs) to run many tics in one
-  plan, which the batch renderer then draws.
+  `UPDATE` on in-memory tables, and `WITH RECURSIVE` is a `todo` on main
+  (`sail-plan/src/resolver/query/recursion.rs`), so many tics cannot run in
+  one recursive plan. On main a tic would be a sequence of queries, each
+  computing a table's next version from the current ones, with SQLDoom's
+  control flow (its CedarScript `if`s and stage bits) in a small driver.
 - Interactive play. At 0.7 s a frame for one frame per query, Sail main is
   not interactive; throughput comes from batches, which suits rendering a
   recorded or simulated run.
