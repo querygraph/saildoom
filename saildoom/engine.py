@@ -49,10 +49,31 @@ CONSTANTS = {
 }
 
 
+# Settings PySpark 4.2's createDataFrame reads before it builds a local
+# relation, which Sail does not define: Spark's defaults, except that local
+# relations stay inline in the plan (no artifact cache) whatever their size.
+CLIENT_CONFIGS = {
+    "spark.sql.session.localRelationCacheThreshold": str(1 << 40),
+    "spark.sql.session.localRelationSizeLimit": str((1 << 31) - 1),
+    "spark.sql.session.localRelationChunkSizeRows": "10000",
+    "spark.sql.session.localRelationChunkSizeBytes": str(16 << 20),
+    "spark.sql.session.localRelationBatchOfChunksSizeBytes": str(256 << 20),
+    "spark.sql.execution.pandas.convertToArrowArraySafely": "false",
+    "spark.sql.execution.pandas.inferPandasDictAsMap": "false",
+    "spark.sql.pyspark.inferNestedDictAsStruct.enabled": "false",
+    "spark.sql.pyspark.legacy.inferArrayTypeFromFirstElement.enabled": "false",
+    "spark.sql.pyspark.legacy.inferMapTypeFromFirstPair.enabled": "false",
+    "spark.sql.execution.arrow.useLargeVarTypes": "false",
+}
+
+
 def connect(url=None):
     from pyspark.sql import SparkSession
     url = url or os.environ.get("SAIL_REMOTE", "sc://localhost:50051")
-    return SparkSession.builder.remote(url).getOrCreate()
+    spark = SparkSession.builder.remote(url).getOrCreate()
+    for key, value in CLIENT_CONFIGS.items():
+        spark.conf.set(key, value)
+    return spark
 
 
 def _rgb_int(table):
@@ -152,6 +173,54 @@ def load_map(spark, data, map_id, cache=None):
             df = df.cache()
         df.createOrReplaceTempView(name)
     return directory
+
+
+STATE_TABLES = (
+    "render_segs", "render_things", "sectors", "things", "player_state",
+    "player_weapons", "player_weapon_owned", "monster_ai", "thing_health",
+    "world_effects", "monster_projectiles", "picked_up_items",
+    "sector_light_fx", "mp_players",
+)
+
+
+def load_run(spark, data, map_id, state_dir):
+    """Static tables from the map's cut; state tables from per-tic snapshots."""
+    directory = cut_map(data, map_id)
+    for name in RENDER_TABLES:
+        source = (Path(state_dir) if name in STATE_TABLES else directory) / f"{name}.parquet"
+        spark.read.parquet(str(source)).createOrReplaceTempView(name)
+    return directory
+
+
+def batch_sql():
+    return strip_comments((ROOT / "sql" / "renderer_batch.sql").read_text())
+
+
+def render_batch(spark, sql_text, map_id, player, skill, tic_poses, meta, frames_path=None):
+    """Render [(tic, pose)] in one query; return {tic: 320x200x3 RGB bytes}."""
+    lit = lambda v: f"CAST({float(v)!r} AS DOUBLE)"
+    rows = ", ".join(
+        f"({i}, {int(t)}, {lit(p[0])}, {lit(p[1])}, {lit(p[2])}, {lit(p[3])})"
+        for i, (t, p) in enumerate(tic_poses))
+    frames_sql = f"(SELECT * FROM VALUES {rows} AS fr(frame_id, tic, px, py, pz, angle))"
+    params = dict(CONSTANTS, map_id=map_id, player=player, skill=skill,
+                  skill_bit=1 if skill <= 1 else 2 if skill == 2 else 4,
+                  px="px", py="py", pz="pz", vr="vr",
+                  sky_tex_id=meta["sky_tex_id"], sky_w=meta["sky_w"],
+                  tic_lo=min(t for t, _ in tic_poses), tic_hi=max(t for t, _ in tic_poses),
+                  frames=frames_sql)
+    table = spark.sql(expand(sql_text, params)).toArrow()
+    fid = table.column("frame_id").to_numpy()
+    rgb = table.column("rgb").to_numpy().astype(np.uint32)
+    out = {}
+    for i, (tic, _) in enumerate(tic_poses):
+        sel = rgb[fid == i]
+        if len(sel) != 64000:
+            raise RuntimeError(f"frame {tic} has {len(sel)} pixels, not 64000")
+        px = np.empty((64000, 3), dtype=np.uint8)
+        px[:, 0], px[:, 1], px[:, 2] = sel >> 16, (sel >> 8) & 255, sel & 255
+        out[tic] = px.tobytes()
+    return out
 
 
 def map_meta(data, map_id):
