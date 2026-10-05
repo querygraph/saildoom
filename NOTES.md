@@ -68,6 +68,12 @@ execution, which brings the 10 cores to 38.8 frames a second.
 
 ## Sail issues found
 
+- Filed: [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058),
+  wrong results on Sail main too: an inner join whose `ON` pairs an equi-key
+  with an equality spanning two cross-joined relations loses the second
+  (`extract_equijoin_predicate` with `eliminate_cross_join`). The game's
+  respawn fog hit it; `tic_monsters.sql` writes one branch per fog instead.
+
 - Filed: [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742), a
   `CASE` over arrays of structs panics when only a later branch has a NULL
   item (the renderer puts the nullable branch first to avoid it).

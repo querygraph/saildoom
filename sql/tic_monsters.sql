@@ -944,7 +944,7 @@ X4 AS (
   -- The teleport fog at the corpse (k = 0) and at the spawn spot (k = 1).
   -- One branch each: DataFusion's eliminate_cross_join drops an equi-join key
   -- that spans two relations, such as `s.id = CASE k.k ... END` over a cross
-  -- join with the k values.
+  -- join with the k values (apache/datafusion#26058).
   SELECT * FROM X3
   UNION ALL
   SELECT q.* FROM (
