@@ -1,0 +1,7 @@
+.venv/
+data/
+reference/cedar-*/
+__pycache__/
+*.pyc
+.DS_Store
+*.wad
