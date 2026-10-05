@@ -7,3 +7,5 @@ __pycache__/
 *.wad
 reference/run-*/
 video/
+/reference/trace-*/
+/data/api-store*/
