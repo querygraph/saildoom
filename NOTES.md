@@ -147,6 +147,30 @@ Sail and compares call by call.
   same sequence values in a tic, but CedarDB's order among one tic's inserts
   follows its plan.
 
+## Playing SQLDoom's client on Sail
+
+`scripts/play.py` runs SQLDoom's own client unchanged on the API backend
+(`saildoom/pgshim.py` stands in for psycopg2). It plays, slowly: a tic takes
+about 7 s and a frame 0.9 s.
+
+Nearly all of a tic is Sail planning the tic query (710 KB of SQL, 312 CTEs);
+running it is cheap (the same SQL steps 1,200 tics in 18 s when planned
+once). A profile of one tic on a symbolized fork build: the logical
+optimizer 46%, physical planning 36%, Sail's resolver 18%. About a quarter
+of all samples compare struct literals: every UNION branch of the world's
+packing carries a `CAST(NULL AS STRUCT<...>)` for each other kind, and
+`EquivalenceProperties::project` registers each as a constant and compares
+them (`Literal::dyn_eq`, `StructArray::eq`, which converts both arrays to
+`ArrayData`). Rewriting the SQL did not help: reading each kind from its own
+table plans in 15 s (the shared CTEs cost more than the pruned union), and
+non-literal placeholders in 11.7 s.
+
+Measured while building the tic up stage file by stage file: the world
+packing alone plans in 1.7 s; reading two different kinds from it makes it a
+shared CTE, planned whole (5.5 s against 0.9 s for one kind read twice).
+
+Interactive speed needs the tic planned once and executed every tic.
+
 ## Not done yet
 
 - Deathmatch and the multiplayer API (`39_mp.sql`, `42_api.sql`), item
@@ -160,8 +184,8 @@ Sail and compares call by call.
   differing frames are libm last bits as before.
 - Interactive play. At 168 ms a tic in the recursive form and 0.7 s for a
   single frame, Sail is not interactive; throughput comes from batches,
-  which suits rendering a recorded or simulated run. SQLDoom's own client has
-  not yet been run against the API backend.
+  which suits rendering a recorded or simulated run. SQLDoom's own client
+  runs on the API backend at about 7 s a tic (see above).
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)
 
