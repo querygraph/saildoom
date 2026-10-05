@@ -27,6 +27,8 @@ STATE_TABLES = (
     "player_weapons", "player_weapon_owned", "monster_ai", "thing_health",
     "world_effects", "monster_projectiles", "picked_up_items",
     "sector_light_fx", "mp_players",
+    # Not read by the renderer; the tic port needs them.
+    "sector_movers", "game_tic_commands",
 )
 
 OID_TYPES = {
@@ -106,6 +108,7 @@ def main():
     from bot import Bot
     snaps = Snapshots()
     poses = []
+    commands = []
     bot = Bot(args.data, map_id)
     started = time.perf_counter()
     for tic in range(0, args.tics + 1):
@@ -121,6 +124,7 @@ def main():
             if tic == 2:
                 command[6] = 3   # the shotgun
             command = tuple(command)
+            commands.append({"tic": tic, "command": list(command)})
             sql.execute_game_tic(cur, map_id, player, command)
             snap = sql.finish_game_tic(cur, map_id, player)
             bot.observe(snap)
@@ -138,6 +142,7 @@ def main():
                   f"{time.perf_counter() - started:.0f} s", flush=True)
     snaps.write(out / "state")
     (out / "poses.json").write_text(json.dumps(poses))
+    (out / "commands.json").write_text(json.dumps(commands))
     (out / "run.json").write_text(json.dumps({
         "map": args.map, "map_id": map_id, "player_thing_id": player,
         "skill": args.skill, "tics": args.tics}))
