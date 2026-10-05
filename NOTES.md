@@ -97,3 +97,25 @@ execution, which brings the 10 cores to 38.8 frames a second.
 - Interactive play. At 0.7 s a frame for one frame per query, Sail main is
   not interactive; throughput comes from batches, which suits rendering a
   recorded or simulated run.
+
+## Sail fork additions (querygraph/sail `work/recursive-cte`)
+
+Three commits on Sail main `d29516a7`: recursive CTEs (`WITH RECURSIVE`), a
+recursive term that refers to its CTE more than once, and computing a CTE that
+is referenced more than once only once (it was inlined at every reference).
+Measured against main, both built with Sail's release profile (fat LTO), same
+machine, default settings:
+
+| Workload | Sail main | Fork | |
+|---|---|---|---|
+| SQLDoom renderer as ported stage by stage (`renderer_v1.sql`) | 10,183 ms | 4,118 ms | 2.5x faster, same pixels |
+| Hand-restructured renderer (`renderer.sql`) | 698 ms | 733 ms | 5% slower |
+| Batch renderer, 105 frames a query | 45.4 ms/frame | 39.3 ms/frame | 13% faster |
+| Game tic, 525 tics as one recursive query | not supported | 33.0 s (63 ms/tic) | new |
+| TPC-DS SF1, the 22 queries that reuse a CTE | 2,794 ms | 2,870 ms | neutral (1.03x, noise) |
+| TPC-DS SF1, 4 control queries | 118 ms | 123 ms | neutral |
+
+TPC-DS results are identical on both for all 26 queries. TPC-DS at SF1 is too
+small for reuse to pay off: an inlined copy runs in parallel and streams, a
+shared result is collected first and replayed as one partition.
+`scripts/bench_tpcds_cte.py` runs the comparison.
