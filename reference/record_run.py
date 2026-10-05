@@ -95,6 +95,7 @@ def main():
                     help="IDCLIP on, and visit every kind of special line (bot.TourBot)")
     ap.add_argument("--mechanics", help="comma-separated: the tour visits only these")
     ap.add_argument("--mortal", action="store_true", help="no IDDQD: the player takes damage and can die")
+    ap.add_argument("--tour-timeout", type=int, default=240, help="tics before the tour gives a line up")
     args = ap.parse_args()
     sys.path.insert(0, str(args.sqldoom))
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -120,7 +121,8 @@ def main():
     snaps = Snapshots()
     poses = []
     commands = []
-    bot = (TourBot(args.data, map_id, mechanics=set(args.mechanics.split(",")) if args.mechanics else None)
+    bot = (TourBot(args.data, map_id, timeout=args.tour_timeout,
+                   mechanics=set(args.mechanics.split(",")) if args.mechanics else None)
            if args.tour else Bot(args.data, map_id))
     started = time.perf_counter()
     for tic in range(0, args.tics + 1):

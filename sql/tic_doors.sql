@@ -390,15 +390,25 @@ raise_targets AS (
     LEFT JOIN S0 fs ON fs.ntic = e.ntic AND fs.id = fsd.sector_id
     LEFT JOIN (
       -- the shortest lower texture on the sector's two-sided lines, either side
-      SELECT sd.ntic, sd.sector_id, MIN(wt.height) AS shortest
-      FROM D1 sd
-      JOIN linedefs ld ON ld.map_id = ${map_id} AND (ld.right_sd_id = sd.id OR ld.left_sd_id = sd.id)
-        AND ld.right_sd_id IS NOT NULL AND ld.left_sd_id IS NOT NULL
-      JOIN D1 both_sides ON both_sides.ntic = sd.ntic AND both_sides.id IN (ld.right_sd_id, ld.left_sd_id)
+      SELECT x.ntic, x.sector_id, MIN(wt.height) AS shortest
+      FROM (
+        SELECT sd.ntic, sd.sector_id, ld.right_sd_id, ld.left_sd_id
+        FROM (SELECT DISTINCT ntic FROM ev WHERE mechanic = 'raise') rt
+        JOIN D1 sd ON sd.ntic = rt.ntic
+        JOIN linedefs ld ON ld.map_id = ${map_id} AND ld.right_sd_id = sd.id
+        WHERE ld.right_sd_id IS NOT NULL AND ld.left_sd_id IS NOT NULL
+        UNION ALL
+        SELECT sd.ntic, sd.sector_id, ld.right_sd_id, ld.left_sd_id
+        FROM (SELECT DISTINCT ntic FROM ev WHERE mechanic = 'raise') rt
+        JOIN D1 sd ON sd.ntic = rt.ntic
+        JOIN linedefs ld ON ld.map_id = ${map_id} AND ld.left_sd_id = sd.id AND ld.right_sd_id <> sd.id
+        WHERE ld.right_sd_id IS NOT NULL AND ld.left_sd_id IS NOT NULL
+      ) x
+      JOIN D1 both_sides ON both_sides.ntic = x.ntic
+        AND (both_sides.id = x.right_sd_id OR both_sides.id = x.left_sd_id)
       JOIN walltex_meta wt ON wt.name = both_sides.lower_tex
       WHERE both_sides.lower_tex IS NOT NULL AND both_sides.lower_tex <> '-'
-        AND sd.ntic IN (SELECT ntic FROM ev WHERE mechanic = 'raise')
-      GROUP BY sd.ntic, sd.sector_id
+      GROUP BY x.ntic, x.sector_id
     ) sh ON sh.ntic = e.ntic AND sh.sector_id = s.id
     WHERE e.mechanic = 'raise'
     GROUP BY e.ntic, e.line_id, e.height_target, e.change_tex, e.mover_type, e.direction, e.speed, e.crush,

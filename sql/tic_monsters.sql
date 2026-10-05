@@ -941,25 +941,33 @@ I11 AS (
   LEFT JOIN N3 rt ON rt.ntic = ai.ntic AND rt.thing_id = ai.thing_id
 ),
 X4 AS (
-  -- The teleport fog at the corpse and at the spawn spot.
+  -- The teleport fog at the corpse (k = 0) and at the spawn spot (k = 1).
+  -- One branch each: DataFusion's eliminate_cross_join drops an equi-join key
+  -- that spans two relations, such as `s.id = CASE k.k ... END` over a cross
+  -- join with the k values.
   SELECT * FROM X3
   UNION ALL
   SELECT q.* FROM (
     SELECT r.ntic, ${map_id} AS map_id,
       CAST(${MONSTER_RESPAWN_EFFECT_ID_BASE} AS BIGINT) + CAST(r.thing_id AS BIGINT) * ${EFFECT_ID_TIC_SPAN} * 2
-        + (p.level_tics % ${EFFECT_ID_TIC_SPAN}) * 2 + k.k AS effect_id,
-      'tfog' AS effect_type,
-      CASE k.k WHEN 0 THEN r.old_x ELSE CAST(t.spawn_x AS FLOAT) END AS x,
-      CASE k.k WHEN 0 THEN r.old_y ELSE CAST(t.spawn_y AS FLOAT) END AS y,
-      CAST(s.floor_height AS FLOAT) AS z,
-      CASE k.k WHEN 0 THEN rt.sector_id ELSE rt.spawn_sector_id END AS sector_id, 0 AS age
+        + (p.level_tics % ${EFFECT_ID_TIC_SPAN}) * 2 + 0 AS effect_id,
+      'tfog' AS effect_type, r.old_x AS x, r.old_y AS y, CAST(s.floor_height AS FLOAT) AS z,
+      rt.sector_id, 0 AS age
+    FROM mo_respawns r
+    JOIN N2 rt ON rt.ntic = r.ntic AND rt.thing_id = r.thing_id
+    JOIN mo_player p ON p.ntic = r.ntic
+    JOIN S2 s ON s.ntic = r.ntic AND s.id = rt.sector_id
+    UNION ALL
+    SELECT r.ntic, ${map_id} AS map_id,
+      CAST(${MONSTER_RESPAWN_EFFECT_ID_BASE} AS BIGINT) + CAST(r.thing_id AS BIGINT) * ${EFFECT_ID_TIC_SPAN} * 2
+        + (p.level_tics % ${EFFECT_ID_TIC_SPAN}) * 2 + 1 AS effect_id,
+      'tfog' AS effect_type, CAST(t.spawn_x AS FLOAT) AS x, CAST(t.spawn_y AS FLOAT) AS y,
+      CAST(s.floor_height AS FLOAT) AS z, rt.spawn_sector_id AS sector_id, 0 AS age
     FROM mo_respawns r
     JOIN T5 t ON t.ntic = r.ntic AND t.id = r.thing_id
     JOIN N2 rt ON rt.ntic = r.ntic AND rt.thing_id = r.thing_id
     JOIN mo_player p ON p.ntic = r.ntic
-    CROSS JOIN (SELECT 0 AS k UNION ALL SELECT 1) k
-    JOIN S2 s ON s.ntic = r.ntic
-      AND s.id = CASE k.k WHEN 0 THEN rt.sector_id ELSE COALESCE(rt.spawn_sector_id, rt.sector_id) END
+    JOIN S2 s ON s.ntic = r.ntic AND s.id = COALESCE(rt.spawn_sector_id, rt.sector_id)
   ) q
   LEFT ANTI JOIN X3 x ON x.ntic = q.ntic AND x.effect_id = q.effect_id
 ),
