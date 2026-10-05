@@ -28,7 +28,8 @@ STATE_TABLES = (
     "world_effects", "monster_projectiles", "picked_up_items",
     "sector_light_fx", "mp_players",
     # Not read by the renderer; the tic port needs them.
-    "sector_movers", "game_tic_commands",
+    "sector_movers", "game_tic_commands", "line_special_events",
+    "line_activations", "line_buttons", "sidedefs",
 )
 
 OID_TYPES = {

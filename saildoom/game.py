@@ -1,6 +1,9 @@
 """The game tic on Sail: running SQLDoom's tic as Spark SQL.
 
-`sql/tic_step.sql` advances the world by one tic. It runs two ways:
+The world is one relation (saildoom/world.py): the player, sectors, sector
+movers, queued line events, one-shot activations, switch buttons, sidedefs and
+render_segs, one kind of row each. `sql/tic_doors.sql` then `sql/tic_step.sql`
+advance it by one tic. It runs two ways:
 
 - `step_all`: every recorded tic t of a run -> t + 1, in one query. Each tic
   starts from CedarDB's recorded state, so one step is checked in isolation.
@@ -21,6 +24,7 @@ import pyarrow.parquet as pq
 
 from . import engine
 from .sqlmacro import expand, strip_comments
+from .world import KINDS, World
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,10 +36,12 @@ CONSTANTS = {
     "MAXSTEP": "24.0D", "BLOCK_MARGIN": "2.0D", "GRAVITY": "1.0D",
     "BOB_FACTOR": "4.0D", "MAXBOB": "16.0D", "POS_EPSILON": "1e-7D",
     "BOB_PERIOD_TICS": "20.0D", "STOPSPEED": "0.0625D", "FRICTION": "0.90625D",
+    "USERANGE": "64.0D",
 }
 
 STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
-                 "node_path_steps", "nodes", "render_segs")
+                 "node_path_steps", "nodes", "render_segs", "linedefs",
+                 "line_special_defs", "sector_adjacency")
 
 
 @dataclass
@@ -86,53 +92,61 @@ def _params(run):
     return dict(CONSTANTS, map_id=run.map_id, player=run.player)
 
 
-def _step_sql():
-    return strip_comments((ROOT / "sql" / "tic_step.sql").read_text())
+def _world(run_dir):
+    return World(Path(run_dir) / "state")
 
 
-PREV = """prev AS (
-  SELECT ps.*, t.x AS t_x, t.y AS t_y, t.z AS t_z, t.angle AS t_angle
-  FROM rec_player_state ps
-  JOIN rec_things t ON t.tic = ps.tic AND t.map_id = ps.map_id AND t.id = ps.player_thing_id
-  WHERE ps.map_id = ${map_id} AND ps.player_thing_id = ${player} AND {where}
-)"""
+def _step_sql(world):
+    """The tic: CTEs from `prev` (world rows at tic t) to `step`, world rows at t + 1."""
+    body = "\n".join(strip_comments((ROOT / "sql" / name).read_text()).strip().rstrip(",") + ","
+                     for name in ("tic_doors.sql", "tic_step.sql"))
+    packed = "\n  UNION ALL\n  ".join(
+        world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic")
+        for kind in KINDS)
+    return (world.unpack_ctes("prev") + ",\n" + body
+            + f"\nstep AS (\n  {packed}\n)")
 
 
-def step_all(spark, run, tics):
-    sql = ("WITH " + PREV.replace("{where}", f"ps.tic < {tics}") + ",\n"
-           + _step_sql() + "\nSELECT * FROM next_world ORDER BY tic")
-    return spark.sql(expand(sql, _params(run))).toArrow()
+def _recorded(world, where):
+    return "\n  UNION ALL\n  ".join(world.recorded_rows(kind, where) for kind in KINDS)
 
 
-WORLD_COLUMNS = (
-    "tic, map_id, player_thing_id, health, alive, level_tics, previous_x, previous_y, "
-    "position_x, position_y, base_z, view_z, view_angle, momentum_x, momentum_y, "
-    "bob_strength, previous_view_z, previous_view_angle, sector_id, pain_face_tics, armor, "
-    "armor_class, backpack, ammo_bullets, ammo_shells, ammo_rockets, ammo_cells, key_blue, "
-    "key_yellow, key_red, radsuit_tics, invis_tics, momentum_z, damage_count, bonus_count, "
-    "light_amp_tics, power_map, god_mode, noclip, invuln_tics, berserk, message, "
-    "message_tics, frags, death_tics, killer_id, sprite_frame, t_x, t_y, t_z, t_angle, last_mode")
+def step_all(spark, run, tics, run_dir):
+    """Every recorded tic t < tics advanced one tic, each from CedarDB's state."""
+    world = _world(run_dir)
+    sql = (f"WITH prev AS (\n  {_recorded(world, f'tic < {tics}')}\n),\n"
+           + _step_sql(world) + "\nSELECT * FROM step")
+    return split(spark.sql(expand(sql, _params(run))).toArrow())
 
 
-def simulate(spark, run, tics):
-    """The run as one recursive query: tic 0 from the recording, then tic_step."""
-    start = PREV.replace("{where}", "ps.tic = 0")
-    start = start[start.index("(") + 1:start.rindex(")")]
+def simulate(spark, run, tics, run_dir):
+    """The run as one recursive query: tic 0 from the recording, then the tic."""
+    world = _world(run_dir)
     sql = f"""WITH RECURSIVE world AS (
-  SELECT {WORLD_COLUMNS} FROM (SELECT *, CAST(NULL AS STRING) AS last_mode FROM ({start}) s00) s0
+  {_recorded(world, "tic = 0")}
   UNION ALL
   SELECT * FROM (
     WITH prev AS (SELECT * FROM world),
-{_step_sql()}
-    SELECT {WORLD_COLUMNS} FROM next_world
-  ) step
-  WHERE step.tic <= {tics}
+{_step_sql(world)}
+    SELECT * FROM step
+  ) s
+  WHERE s.tic <= {tics}
 )
-SELECT * FROM world ORDER BY tic"""
-    return spark.sql(expand(sql, _params(run))).toArrow()
+SELECT * FROM world"""
+    return split(spark.sql(expand(sql, _params(run))).toArrow())
 
 
-def recorded_players(spark, run, tics):
-    sql = ("WITH " + PREV.replace("{where}", f"ps.tic <= {tics}")
-           + "\nSELECT * FROM prev ORDER BY tic")
-    return spark.sql(expand(sql, _params(run))).toArrow()
+def recorded(spark, run, tics, run_dir):
+    world = _world(run_dir)
+    sql = f"SELECT * FROM ({_recorded(world, f'tic <= {tics}')}) w"
+    return split(spark.sql(expand(sql, _params(run))).toArrow())
+
+
+def split(table):
+    """World rows -> {kind: [row dict with tic]}."""
+    out = {kind: [] for kind in KINDS}
+    for kind, col in ((k, c) for k, (c, _) in KINDS.items()):
+        rows = table.filter(pc.equal(table["kind"], kind))
+        for tic, row in zip(rows["tic"].to_pylist(), rows[col].to_pylist()):
+            out[kind].append(dict(row, tic=tic))
+    return out

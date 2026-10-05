@@ -1,40 +1,19 @@
--- One 35 Hz game tic of SQLDoom, in Spark SQL: the player's part.
+-- One 35 Hz game tic of SQLDoom, in Spark SQL: the player's part, after
+-- tic_doors.sql (clock, use, specials, movers) and before the outputs.
 --
--- The input `prev` holds the player at the end of tic t (player_state's
--- columns plus the player Thing's t_x, t_y, t_z, t_angle); the output is the
--- same row for tic t + 1. Every relation is keyed by tic, so the same text
--- advances one tic inside WITH RECURSIVE or checks every recorded tic at once.
---
--- Ported from cedardb/sqldoom sql/runtime/functions: 09_cs_clock (the clock),
--- 14_cs_movement_mode (which movement runs), 16_cs_turn (turning in place),
--- 15_cs_move (P_MovePlayer, P_TryMove, P_ZMovement, the view bob) and
--- 02_geometry's doom_sector_at. The stages not ported yet (doors, monsters,
--- pickups ...) are read from a recorded run: rec_sectors and rec_sector_movers
--- at tic t + 1, rec_things and rec_thing_health at tic t, as SQLDoom's tic
--- order sees them when the player moves.
+-- Ported from cedardb/sqldoom sql/runtime/functions: 14_cs_movement_mode
+-- (which movement runs), 16_cs_turn (turning in place), 15_cs_move
+-- (P_MovePlayer, P_TryMove, P_ZMovement, the view bob), 02_geometry's
+-- doom_sector_at and 18_cs_cross (the player's line crossings). Sectors and
+-- movers come from tic_doors (S2, M2); the stages not ported yet (monsters,
+-- pickups ...) are read from the recorded run: rec_things and rec_thing_health
+-- at tic t, as SQLDoom's tic order sees them when the player moves.
 --
 -- player_state and things store positions, angles and momenta as `real`;
 -- values are computed in double and stored through CAST(... AS FLOAT), as the
 -- original's UPDATEs round them.
-clocked AS (
-  SELECT p.*, p.tic + 1 AS ntic,
-         p.level_tics + 1 AS c_level_tics,
-         GREATEST(0, p.pain_face_tics - 1) AS c_pain_face_tics,
-         GREATEST(0, p.radsuit_tics - 1) AS c_radsuit_tics,
-         GREATEST(0, p.invis_tics - 1) AS c_invis_tics,
-         GREATEST(0, p.light_amp_tics - 1) AS c_light_amp_tics,
-         GREATEST(0, p.invuln_tics - 1) AS c_invuln_tics,
-         GREATEST(0, p.message_tics - 1) AS c_message_tics,
-         CASE WHEN p.message_tics <= 1 THEN CAST(NULL AS STRING) ELSE p.message END AS c_message,
-         GREATEST(0, p.damage_count - 1) AS c_damage_count,
-         GREATEST(0, p.bonus_count - 1) AS c_bonus_count
-  FROM prev p
-),
 movers AS (
-  SELECT tic, TRUE AS active
-  FROM rec_sector_movers
-  WHERE map_id = ${map_id} AND direction <> 2
-  GROUP BY tic
+  SELECT DISTINCT ntic, TRUE AS active FROM M2 WHERE direction <> 2
 ),
 moded AS (
   SELECT c.*,
@@ -54,7 +33,7 @@ moded AS (
     END AS mode
   FROM clocked c
   JOIN cmd g ON g.tic = c.ntic
-  LEFT JOIN movers mv ON mv.tic = c.ntic
+  LEFT JOIN movers mv ON mv.ntic = c.ntic
 ),
 -- ---------------------------------------------------------------- 15_cs_move
 current_pose AS (
@@ -108,8 +87,8 @@ blocking AS (
          CAST(lg.x2 AS DOUBLE) AS x2, CAST(lg.y2 AS DOUBLE) AS y2
   FROM reach r
   JOIN linedef_geom lg ON lg.map_id = ${map_id}
-  LEFT JOIN rec_sectors sf ON sf.tic = r.ntic AND sf.map_id = lg.map_id AND sf.id = lg.fsec
-  LEFT JOIN rec_sectors sb ON sb.tic = r.ntic AND sb.map_id = lg.map_id AND sb.id = lg.bsec
+  LEFT JOIN S2 sf ON sf.ntic = r.ntic AND sf.id = lg.fsec
+  LEFT JOIN S2 sb ON sb.ntic = r.ntic AND sb.id = lg.bsec
   WHERE LEAST(lg.x1, lg.x2) <= r.hi_x + ${PLAYER_RADIUS} + 2.0D
     AND GREATEST(lg.x1, lg.x2) >= r.lo_x - ${PLAYER_RADIUS} - 2.0D
     AND LEAST(lg.y1, lg.y2) <= r.hi_y + ${PLAYER_RADIUS} + 2.0D
@@ -213,7 +192,7 @@ sector_floor AS (
     FROM leaf l JOIN render_segs rs ON rs.map_id = ${map_id} AND rs.ssector_id = l.ssector_id
     GROUP BY l.ntic
   ) l
-  JOIN rec_sectors s ON s.tic = l.ntic AND s.map_id = ${map_id} AND s.id = l.fsec
+  JOIN S2 s ON s.ntic = l.ntic AND s.id = l.fsec
 ),
 resolved AS (
   SELECT t.*, bp.cx, bp.cy, sf.sector_id,
@@ -326,4 +305,53 @@ next_world AS (
     CASE WHEN n.last_mode = 'turn' OR (n.last_mode = 'full' AND p.moved) THEN n.view_angle ELSE p.t_angle END AS t_angle
   FROM next_player n
   JOIN stepped p ON p.ntic = n.tic
-)
+),
+-- ---------------------------------------------------------------- 18_cs_cross
+cross_events AS (
+  -- Runs when the player's position moved this tic (plan bit 8).
+  SELECT c.ntic, ${map_id} AS map_id, c.player_thing_id, c.line_id, 'cross' AS trigger_type,
+         c.from_front
+  FROM (
+    SELECT p.tic AS ntic, p.player_thing_id, ld.linedef_id AS line_id, d.cross_once,
+      ((ld.x2 - ld.x1) * (p.oy - ld.y1) - (ld.y2 - ld.y1) * (p.ox - ld.x1)) < 0 AS from_front,
+      ABS((ld.x2 - ld.x1) * (p.oy - ld.y1) - (ld.y2 - ld.y1) * (p.ox - ld.x1)) AS old_side,
+      ((ld.x2 - ld.x1) * (p.ny - ld.y1) - (ld.y2 - ld.y1) * (p.nx - ld.x1)) AS new_side,
+      ((p.nx - p.ox) * (ld.y1 - p.oy) - (p.ny - p.oy) * (ld.x1 - p.ox)) AS v1_side,
+      ((p.nx - p.ox) * (ld.y2 - p.oy) - (p.ny - p.oy) * (ld.x2 - p.ox)) AS v2_side
+    FROM (
+      SELECT tic, player_thing_id,
+             CAST(previous_x AS DOUBLE) AS ox, CAST(previous_y AS DOUBLE) AS oy,
+             CAST(position_x AS DOUBLE) AS nx, CAST(position_y AS DOUBLE) AS ny
+      FROM next_player
+      WHERE ABS(position_x - previous_x) > ${POS_EPSILON} OR ABS(position_y - previous_y) > ${POS_EPSILON}
+    ) p
+    JOIN (SELECT linedef_id, special, CAST(x1 AS DOUBLE) AS x1, CAST(y1 AS DOUBLE) AS y1,
+                 CAST(x2 AS DOUBLE) AS x2, CAST(y2 AS DOUBLE) AS y2
+          FROM linedef_geom WHERE map_id = ${map_id}) ld ON TRUE
+    JOIN linedefs d ON d.map_id = ${map_id} AND d.id = ld.linedef_id AND d.cross_activated
+  ) c
+  LEFT JOIN A1 a ON a.ntic = c.ntic AND a.line_id = c.line_id
+  WHERE c.old_side > 1e-7D AND c.new_side <> 0
+    AND ((c.from_front AND c.new_side > 0) OR (NOT c.from_front AND c.new_side < 0))
+    AND c.v1_side * c.v2_side < 0
+    AND NOT (COALESCE(c.cross_once, FALSE) AND a.line_id IS NOT NULL)
+),
+-- ---------------------------------------------------------------- the outputs
+P_out AS (SELECT * FROM next_world),
+S_out AS (SELECT * FROM S2),
+M_out AS (SELECT * FROM M2),
+E_out AS (
+  -- The player's crossings, and the events the unported stages (monsters
+  -- crossing lines ...) left queued at the end of the tic.
+  SELECT ntic, map_id, player_thing_id, line_id, trigger_type, from_front FROM cross_events
+  UNION ALL
+  SELECT e.tic AS ntic, e.map_id, e.player_thing_id, e.line_id, e.trigger_type, e.from_front
+  FROM rec_line_special_events e
+  JOIN (SELECT DISTINCT ntic FROM P0) t ON t.ntic = e.tic
+  WHERE e.map_id = ${map_id}
+    AND NOT (e.player_thing_id = ${player} AND e.trigger_type IN ('cross', 'use'))
+),
+A_out AS (SELECT * FROM A1),
+B_out AS (SELECT * FROM B2),
+D_out AS (SELECT * FROM D2),
+R_out AS (SELECT * FROM R2)
