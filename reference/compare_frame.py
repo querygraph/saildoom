@@ -24,6 +24,7 @@ def main():
     ap.add_argument("--pose", required=True)
     ap.add_argument("--png", type=Path)
     ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--sql", type=Path, default=ROOT / "sql/renderer.sql")
     args = ap.parse_args()
 
     meta = json.loads((args.ref / "timings.json").read_text())
@@ -34,12 +35,14 @@ def main():
     t = time.perf_counter()
     engine.load_map(spark, args.data, meta["map_id"])
     print(f"map loaded in {(time.perf_counter() - t) * 1000:.0f} ms")
-    sql = engine.renderer_sql()
+    from saildoom.sqlmacro import strip_comments
+    sql = strip_comments(args.sql.read_text())
+    meta_map = engine.map_meta(args.data, meta["map_id"])
     times = []
     for _ in range(args.repeat):
         t = time.perf_counter()
         frame = engine.render(spark, sql, meta["map_id"], meta["player_thing_id"],
-                              meta["skill"], pose)
+                              meta["skill"], pose, meta_map)
         times.append((time.perf_counter() - t) * 1000)
     print("render ms:", ", ".join(f"{v:.0f}" for v in times[:10]),
           f"| median {statistics.median(times):.1f}")

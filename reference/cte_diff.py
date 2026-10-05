@@ -84,7 +84,7 @@ def main():
     for i, name in enumerate(("map_id", "player", "skill", "x", "y", "z", "angle")):
         original = original.replace(f"${i + 1}", repr(params[name]))
     original = re.sub(r"(\d+(?:\.\d+)?(?:e-?\d+)?)::float8", r"\1::float8", original)
-    port = (ROOT / "sql/renderer.sql").read_text()
+    port = (ROOT / "sql/renderer_v1.sql").read_text()
 
     conn = psycopg2.connect(args.dsn)
     conn.autocommit = True

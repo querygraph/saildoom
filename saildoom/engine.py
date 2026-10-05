@@ -8,6 +8,7 @@ data/<wad>/maps/<map_id>/ and registered in Sail as temporary views with the
 original table names, so the SQL reads like SQLDoom's.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -30,7 +31,22 @@ RENDER_TABLES = (
     "thing_ai_frames", "thing_combat_defs", "thing_health", "things",
     "ui_hud_pixels", "ui_patches", "ui_static_pixels", "walltex_meta",
     "walltex_texels", "weapon_defs", "weapon_frames", "world_effects",
+    "texels",
 )
+
+# Renderer constants (SQLDoom's render_settings), folded into the SQL as
+# literals. Expressions stay expressions so Sail evaluates them exactly as the
+# stage-by-stage port did.
+CONSTANTS = {
+    "W": "320", "H": "168", "CX": "160.0D", "CY": "84.0D",
+    "FOCAL": "(160.0D / tan(radians(90.0D) / 2.0D))",
+    "TANH": "tan(radians(90.0D) / 2.0D)",
+    "NEAR": "1e-3D",
+    "MAXPD": "(16.0D * (160.0D / tan(radians(90.0D) / 2.0D)))",
+    "ROT_OFF": "202.5D", "ROT_SPAN": "45.0D",
+    "SKY_COLS": "256.0D", "SKY_DEG": "90.0D", "SKY_ROWS": "128", "SKY_HY": "100",
+    "FLAT": "64", "INVULN": "32", "PSP_BIAS": "23",
+}
 
 
 def connect(url=None):
@@ -58,6 +74,8 @@ def cut_map(data, map_id):
     read = lambda name: pq.read_table(Path(data) / f"{name}.parquet")
     tables = {}
     for name in RENDER_TABLES:
+        if name == "texels":
+            continue  # derived below
         t = read(name)
         if "map_id" in t.column_names:
             t = t.filter(pc.equal(t.column("map_id"), map_id))
@@ -97,6 +115,27 @@ def cut_map(data, map_id):
     tables["flat_texels"] = tables["flat_texels"].filter(
         pc.is_in(tables["flat_texels"].column("flat_id"), flat_ids))
 
+    # One texel table for every texture the renderer samples:
+    # tkey = space << 40 | id << 20 | offset (1 walls and sky, 2 flats, 3 sprites).
+    parts = []
+    for space, name, id_col in ((1, "walltex_texels", "tex_id"),
+                                (2, "flat_texels", "flat_id"),
+                                (3, "sprite_texels", "lump_id")):
+        t = tables[name]
+        key = ((np.int64(space) << 40)
+               | (t.column(id_col).to_numpy().astype(np.int64) << 20)
+               | t.column("off").to_numpy().astype(np.int64))
+        parts.append(pa.table({"tkey": key,
+                               "palette_index": t.column("palette_index")}))
+    texels = pa.concat_tables(parts).sort_by("tkey")
+    tables["texels"] = texels
+
+    sky = tables["maps"].column("sky_texture")[0].as_py()
+    m = meta.filter(pc.equal(meta.column("name"), sky))
+    (out / "meta.json").write_text(json.dumps({
+        "sky_tex_id": m.column("tex_id")[0].as_py() if m.num_rows else -1,
+        "sky_w": m.column("width")[0].as_py() if m.num_rows else 0,
+    }))
     for name, t in tables.items():
         pq.write_table(t, out / f"{name}.parquet")
     (out / "_done").write_text("")
@@ -115,15 +154,29 @@ def load_map(spark, data, map_id, cache=None):
     return directory
 
 
+def map_meta(data, map_id):
+    return json.loads((Path(data) / "maps" / str(map_id) / "meta.json").read_text())
+
+
+def frame_params(map_id, player, skill, pose, meta):
+    x, y, z, angle = (float(v) for v in pose)
+    lit = lambda v: f"CAST({v!r} AS DOUBLE)"
+    return dict(CONSTANTS, map_id=map_id, player=player, skill=skill,
+                skill_bit=1 if skill <= 1 else 2 if skill == 2 else 4,
+                x=x, y=y, z=z, angle=angle,
+                px=lit(x), py=lit(y), pz=lit(z),
+                vr=f"radians({lit(angle)})",
+                sky_tex_id=meta["sky_tex_id"], sky_w=meta["sky_w"])
+
+
 def renderer_sql():
     return strip_comments((ROOT / "sql" / "renderer.sql").read_text())
 
 
-def render(spark, sql_text, map_id, player, skill, pose):
+def render(spark, sql_text, map_id, player, skill, pose, meta=None):
     """One frame: 320x200x3 RGB bytes."""
-    x, y, z, angle = (float(v) for v in pose)
-    sql = expand(sql_text, dict(map_id=map_id, player=player, skill=skill,
-                                x=x, y=y, z=z, angle=angle))
+    sql = expand(sql_text, frame_params(map_id, player, skill, pose,
+                                        meta or {"sky_tex_id": -1, "sky_w": 0}))
     table = spark.sql(sql).toArrow()
     rgb = table.column("rgb").to_numpy().astype(np.uint32)
     if len(rgb) != 64000:
