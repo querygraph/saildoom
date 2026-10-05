@@ -38,6 +38,7 @@ KINDS = {
     "Y": ("y", "mapped_lines"),
     "Q": ("q", "monster_projectiles"),
     "Z": ("z", "monster_deaths"),
+    "F": ("f", "sector_light_fx"),
 }
 
 # The player row also carries the player Thing and the last movement mode.

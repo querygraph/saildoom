@@ -357,7 +357,7 @@ targets AS (
          CAST(d.radius AS DOUBLE) AS radius, CAST(sec.floor_height AS DOUBLE) AS base_z,
          CAST(rt.thing_height AS DOUBLE) AS height, rt.sector_id, d.no_blood
   FROM shooter s
-  JOIN H0 h ON h.ntic = s.ntic AND h.alive
+  JOIN Hc h ON h.ntic = s.ntic AND h.alive
   JOIN T0 t ON t.ntic = s.ntic AND t.id = h.thing_id
   JOIN thing_combat_defs d ON d.thing_type = t.type
   JOIN N0 rt ON rt.ntic = s.ntic AND rt.thing_id = t.id
@@ -507,7 +507,7 @@ H1 AS (
     CASE WHEN d.thing_id IS NULL THEN h.health ELSE h.health - d.damage END AS health,
     h.max_health,
     CASE WHEN d.thing_id IS NULL THEN h.alive ELSE h.health - d.damage > 0 END AS alive
-  FROM H0 h LEFT JOIN hit_damage d ON d.ntic = h.ntic AND d.thing_id = h.thing_id
+  FROM Hc h LEFT JOIN hit_damage d ON d.ntic = h.ntic AND d.thing_id = h.thing_id
 ),
 puffs AS (
   SELECT h.ntic, ${map_id} AS map_id, h.shot_serial * 16 + h.pellet AS effect_id,

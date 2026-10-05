@@ -6,7 +6,7 @@
 -- (P_MovePlayer, P_TryMove, P_ZMovement, the view bob), 02_geometry's
 -- doom_sector_at and 18_cs_cross (the player's line crossings). Sectors and
 -- movers come from tic_doors (S2, M2), Things and their health from the
--- start of the tic (T0, H0), as SQLDoom's tic order sees them when the
+-- start of the tic (T0, and Hc: H0 after crushing), as SQLDoom's tic order sees them when the
 -- player moves.
 --
 -- player_state and things store positions, angles and momenta as `real`;
@@ -107,7 +107,7 @@ blocking_things AS (
   FROM reach r
   JOIN T0 tt ON tt.ntic = r.ntic
   LEFT JOIN thing_combat_defs cd ON cd.thing_type = tt.type
-  LEFT JOIN H0 hh ON hh.ntic = r.ntic AND hh.thing_id = tt.id
+  LEFT JOIN Hc hh ON hh.ntic = r.ntic AND hh.thing_id = tt.id
   LEFT JOIN thing_blocking_defs bd ON bd.thing_type = tt.type
   WHERE tt.id <> ${player}
     AND ((cd.thing_type IS NOT NULL AND hh.alive)
@@ -295,7 +295,7 @@ next_player AS (
     s.mode AS last_mode
   FROM stepped s
 ),
-next_world AS (
+next_world_moved AS (
   -- The player Thing follows the player (15_cs_move and 16_cs_turn's
   -- UPDATE things).
   SELECT n.*,
@@ -305,6 +305,31 @@ next_world AS (
     CASE WHEN n.last_mode = 'turn' OR (n.last_mode = 'full' AND p.moved) THEN n.view_angle ELSE p.t_angle END AS t_angle
   FROM next_player n
   JOIN stepped p ON p.ntic = n.tic
+),
+next_world AS (
+  -- 34_cs_death, after the movement: a dead player's view sinks a unit a tic
+  -- to six above the floor, and everything that moved it stops.
+  SELECT n.tic, n.map_id, n.player_thing_id, n.health, n.alive, n.level_tics,
+    n.previous_x, n.previous_y, n.position_x, n.position_y, n.base_z,
+    CASE WHEN n.alive THEN n.view_z
+         ELSE CAST(GREATEST(CAST(s.floor_height AS DOUBLE) + 6.0D, CAST(n.view_z - CAST(1.0 AS FLOAT) AS DOUBLE)) AS FLOAT) END AS view_z,
+    n.view_angle,
+    CASE WHEN n.alive THEN n.momentum_x ELSE CAST(0 AS FLOAT) END AS momentum_x,
+    CASE WHEN n.alive THEN n.momentum_y ELSE CAST(0 AS FLOAT) END AS momentum_y,
+    CASE WHEN n.alive THEN n.bob_strength ELSE CAST(0 AS FLOAT) END AS bob_strength,
+    CASE WHEN n.alive THEN n.previous_view_z ELSE n.view_z END AS previous_view_z,
+    CASE WHEN n.alive THEN n.previous_view_angle ELSE n.view_angle END AS previous_view_angle,
+    n.sector_id, n.pain_face_tics, n.armor, n.armor_class, n.backpack,
+    n.ammo_bullets, n.ammo_shells, n.ammo_rockets, n.ammo_cells, n.key_blue, n.key_yellow, n.key_red,
+    n.radsuit_tics, n.invis_tics,
+    CASE WHEN n.alive THEN n.momentum_z ELSE CAST(0 AS FLOAT) END AS momentum_z,
+    CASE WHEN n.alive THEN n.damage_count ELSE GREATEST(0, n.damage_count - 1) END AS damage_count,
+    n.bonus_count, n.light_amp_tics, n.power_map, n.god_mode, n.noclip, n.invuln_tics, n.berserk,
+    n.message, n.message_tics, n.frags,
+    CASE WHEN n.alive THEN n.death_tics ELSE n.death_tics + 1 END AS death_tics,
+    n.killer_id, n.sprite_frame, n.last_mode, n.t_x, n.t_y, n.t_z, n.t_angle
+  FROM next_world_moved n
+  LEFT JOIN S2 s ON s.ntic = n.tic AND s.id = n.sector_id
 ),
 -- ---------------------------------------------------------------- 18_cs_cross
 cross_events AS (

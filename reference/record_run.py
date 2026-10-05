@@ -91,6 +91,8 @@ def main():
     ap.add_argument("--skill", type=int, default=2)
     ap.add_argument("--tics", type=int, default=700)
     ap.add_argument("--data", type=Path, default=Path(__file__).resolve().parents[1] / "data/freedoom1")
+    ap.add_argument("--tour", action="store_true",
+                    help="IDCLIP on, and visit every kind of special line (bot.TourBot)")
     args = ap.parse_args()
     sys.path.insert(0, str(args.sqldoom))
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -109,14 +111,14 @@ def main():
     sql.prepare_renderer(cur, map_id, player, args.skill)
     # The bot plays with god mode and every weapon (shotgun selected below);
     # it still walks with clipping on.
-    for code in ("IDDQD", "IDKFA"):
+    for code in ("IDDQD", "IDKFA") + (("IDCLIP",) if args.tour else ()):
         sql.cheat_code(cur, map_id, player, code)
 
-    from bot import Bot
+    from bot import Bot, TourBot
     snaps = Snapshots()
     poses = []
     commands = []
-    bot = Bot(args.data, map_id)
+    bot = TourBot(args.data, map_id) if args.tour else Bot(args.data, map_id)
     started = time.perf_counter()
     for tic in range(0, args.tics + 1):
         if tic > 0:
@@ -128,7 +130,7 @@ def main():
             cur.execute("SELECT sector_id FROM player_state WHERE map_id = %s AND player_thing_id = %s",
                         (map_id, player))
             command = list(bot.command(tic, args.skill, monsters, cur.fetchone()[0]))
-            if tic in WEAPON_SWITCHES:
+            if tic in WEAPON_SWITCHES and not args.tour:
                 command[6] = WEAPON_SWITCHES[tic]
             command = tuple(command)
             commands.append({"tic": tic, "command": list(command)})
@@ -150,6 +152,8 @@ def main():
     snaps.write(out / "state")
     (out / "poses.json").write_text(json.dumps(poses))
     (out / "commands.json").write_text(json.dumps(commands))
+    if args.tour:
+        (out / "tour.json").write_text(json.dumps(bot.done, indent=1))
     (out / "run.json").write_text(json.dumps({
         "map": args.map, "map_id": map_id, "player_thing_id": player,
         "skill": args.skill, "tics": args.tics}))

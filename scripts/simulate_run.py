@@ -7,8 +7,7 @@ after that is computed by Sail (saildoom/game.py, sql/tic_*.sql). The result
 is written the way reference/record_run.py writes a CedarDB run -- per-tic
 state tables, poses.json, run.json -- so reference/compare_batch.py renders it
 on Sail and compares every frame with CedarDB's (`frames` links to the
-recorded run's). sector_light_fx and mp_players are map data on a
-single-player E1M1 (the snapshot never changes) and are copied.
+recorded run's). mp_players is empty in a single-player run and is copied.
 """
 
 import argparse
@@ -29,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 from saildoom import game  # noqa: E402
 from saildoom.world import KINDS  # noqa: E402
 
-STATIC = ("sector_light_fx", "mp_players")
+STATIC = ("mp_players",)
 
 
 def camera_pose(ps, alpha=1.0):

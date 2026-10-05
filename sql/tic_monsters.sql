@@ -5,9 +5,9 @@
 -- noise, think, step, move, float, chase, attack, barrel, blast, deaths, each
 -- gated by doom_cs_monster_plan), 28_cs_sector_fx and 29_cs_thing_physics.
 -- 25_cs_sound writes nothing the game reads back (the fired_this_tick it
--- clears is set again by the think stage), and is left out. Not ported:
--- P_NightmareRespawn (skill 4 or -respawn), 35_cs_boss (E1M8's lower_666 and
--- the E2M8/E3M8 exits), 34_cs_death (a no-op while the player is alive).
+-- clears is set again by the think stage), and is left out. P_NightmareRespawn
+-- runs on skill 4; -respawn is the deathmatch phase's. 35_cs_boss lowers
+-- E1M8's tag 666; the E2M8/E3M8 exits are the level flow's.
 mo_player AS (
   SELECT p.tic AS ntic, p.player_thing_id, p.alive, p.level_tics, p.invis_tics > 0 AS shadowed,
          CAST(t.x AS DOUBLE) AS px, CAST(t.y AS DOUBLE) AS py, t.x AS fx, t.y AS fy, g.skill, g.skill_bit
@@ -886,6 +886,86 @@ Z1 AS (
   LEFT ANTI JOIN Z0 z ON z.ntic = ai.ntic AND z.thing_id = ai.thing_id
   WHERE ai.state = 'dead'
 ),
+mo_respawns AS (
+  -- P_NightmareRespawn: on skill 4, a corpse twelve seconds dead, checked on
+  -- every 32nd tic, comes back on a roll of 4 in 256 if its spawn spot is free.
+  SELECT z.ntic, z.thing_id, t.x AS old_x, t.y AS old_y
+  FROM Z1 z
+  JOIN T5 t ON t.ntic = z.ntic AND t.id = z.thing_id
+  JOIN mo_player p ON p.ntic = z.ntic
+  JOIN thing_combat_defs md ON md.thing_type = t.type
+  LEFT ANTI JOIN (
+    SELECT oh.ntic, ot.x, ot.y, od.radius, oh.thing_id
+    FROM H4 oh JOIN T5 ot ON ot.ntic = oh.ntic AND ot.id = oh.thing_id
+    JOIN thing_combat_defs od ON od.thing_type = ot.type
+    WHERE oh.alive
+  ) o ON o.ntic = z.ntic AND o.thing_id <> z.thing_id
+    AND POWER(o.x - t.spawn_x, 2) + POWER(o.y - t.spawn_y, 2) < POWER(o.radius + md.radius, 2)
+  WHERE p.skill = 4
+    AND p.level_tics - z.death_tic >= ${MONSTER_RESPAWN_TICS}
+    AND (p.level_tics & 31) = 0
+    AND PRANDOM(z.thing_id, p.level_tics, 40) <= 4
+),
+T5r AS (
+  SELECT t.ntic, t.id, t.map_id,
+    CASE WHEN r.thing_id IS NULL THEN t.x ELSE CAST(t.spawn_x AS FLOAT) END AS x,
+    CASE WHEN r.thing_id IS NULL THEN t.y ELSE CAST(t.spawn_y AS FLOAT) END AS y,
+    t.z,
+    CASE WHEN r.thing_id IS NULL THEN t.angle ELSE CAST(t.spawn_angle AS FLOAT) END AS angle,
+    t.spawn_x, t.spawn_y, t.spawn_angle, t.mom_x, t.mom_y, t.type, t.flags
+  FROM T5 t LEFT JOIN mo_respawns r ON r.ntic = t.ntic AND r.thing_id = t.id
+),
+H5 AS (
+  SELECT h.ntic, h.map_id, h.thing_id,
+    CASE WHEN r.thing_id IS NULL THEN h.health ELSE h.max_health END AS health, h.max_health,
+    CASE WHEN r.thing_id IS NULL THEN h.alive ELSE TRUE END AS alive
+  FROM H4 h LEFT JOIN mo_respawns r ON r.ntic = h.ntic AND r.thing_id = h.thing_id
+),
+N3 AS (
+  SELECT rt.ntic, rt.map_id, rt.thing_id,
+    CASE WHEN r.thing_id IS NOT NULL AND rt.spawn_sector_id IS NOT NULL THEN rt.spawn_sector_id ELSE rt.sector_id END AS sector_id,
+    rt.spawn_sector_id, rt.sprite, rt.frame, rt.fullbright, rt.spawn_ceiling, rt.thing_height
+  FROM N2 rt LEFT JOIN mo_respawns r ON r.ntic = rt.ntic AND r.thing_id = rt.thing_id
+),
+I11 AS (
+  SELECT ai.ntic, ai.map_id, ai.thing_id,
+    CASE WHEN r.thing_id IS NULL THEN ai.state ELSE 'stand' END AS state,
+    CASE WHEN r.thing_id IS NULL THEN ai.state_tics ELSE -1 END AS state_tics,
+    CASE WHEN r.thing_id IS NULL THEN ai.seq_index ELSE 0 END AS seq_index,
+    CASE WHEN r.thing_id IS NULL THEN ai.sector_id ELSE rt.sector_id END AS sector_id,
+    CASE WHEN r.thing_id IS NULL THEN ai.attack_cooldown ELSE 18 END AS attack_cooldown,
+    CASE WHEN r.thing_id IS NULL THEN ai.fired_this_tick ELSE FALSE END AS fired_this_tick,
+    ai.target_thing_id, ai.charge_tics, ai.movedir, ai.movecount
+  FROM I10 ai
+  LEFT JOIN mo_respawns r ON r.ntic = ai.ntic AND r.thing_id = ai.thing_id
+  LEFT JOIN N3 rt ON rt.ntic = ai.ntic AND rt.thing_id = ai.thing_id
+),
+X4 AS (
+  -- The teleport fog at the corpse and at the spawn spot.
+  SELECT * FROM X3
+  UNION ALL
+  SELECT q.* FROM (
+    SELECT r.ntic, ${map_id} AS map_id,
+      CAST(${MONSTER_RESPAWN_EFFECT_ID_BASE} AS BIGINT) + CAST(r.thing_id AS BIGINT) * ${EFFECT_ID_TIC_SPAN} * 2
+        + (p.level_tics % ${EFFECT_ID_TIC_SPAN}) * 2 + k.k AS effect_id,
+      'tfog' AS effect_type,
+      CASE k.k WHEN 0 THEN r.old_x ELSE CAST(t.spawn_x AS FLOAT) END AS x,
+      CASE k.k WHEN 0 THEN r.old_y ELSE CAST(t.spawn_y AS FLOAT) END AS y,
+      CAST(s.floor_height AS FLOAT) AS z,
+      CASE k.k WHEN 0 THEN rt.sector_id ELSE rt.spawn_sector_id END AS sector_id, 0 AS age
+    FROM mo_respawns r
+    JOIN T5 t ON t.ntic = r.ntic AND t.id = r.thing_id
+    JOIN N2 rt ON rt.ntic = r.ntic AND rt.thing_id = r.thing_id
+    JOIN mo_player p ON p.ntic = r.ntic
+    CROSS JOIN (SELECT 0 AS k UNION ALL SELECT 1) k
+    JOIN S2 s ON s.ntic = r.ntic
+      AND s.id = CASE k.k WHEN 0 THEN rt.sector_id ELSE COALESCE(rt.spawn_sector_id, rt.sector_id) END
+  ) q
+  LEFT ANTI JOIN X3 x ON x.ntic = q.ntic AND x.effect_id = q.effect_id
+),
+Z2 AS (
+  SELECT z.* FROM Z1 z LEFT ANTI JOIN mo_respawns r ON r.ntic = z.ntic AND r.thing_id = z.thing_id
+),
 -- ---------------------------------------------------------------- 28_cs_sector_fx
 P8 AS (
   -- An E1M8-style sector takes god mode away; damaging floors hurt every 32 tics.
@@ -933,11 +1013,11 @@ ph_moving AS (
          CAST(t.mom_x AS DOUBLE) AS mx, CAST(t.mom_y AS DOUBLE) AS my,
          CAST(cd.radius AS DOUBLE) AS radius, cd.skull_fly AS skull,
          cd.floats AND COALESCE(h.alive, FALSE) AND t.z > sec.floor_height AS airborne
-  FROM T5 t
+  FROM T5r t
   JOIN thing_combat_defs cd ON cd.thing_type = t.type
-  JOIN N2 rt ON rt.ntic = t.ntic AND rt.thing_id = t.id
-  LEFT JOIN H4 h ON h.ntic = t.ntic AND h.thing_id = t.id
-  LEFT JOIN I10 ai ON ai.ntic = t.ntic AND ai.thing_id = t.id
+  JOIN N3 rt ON rt.ntic = t.ntic AND rt.thing_id = t.id
+  LEFT JOIN H5 h ON h.ntic = t.ntic AND h.thing_id = t.id
+  LEFT JOIN I11 ai ON ai.ntic = t.ntic AND ai.thing_id = t.id
   JOIN S2 sec ON sec.ntic = t.ntic AND sec.id = COALESCE(ai.sector_id, rt.sector_id)
   WHERE (ABS(t.mom_x) > ${STOPSPEED} OR ABS(t.mom_y) > ${STOPSPEED}) AND t.id <> ${player}
 ),
@@ -966,9 +1046,9 @@ ph_step AS (
   LEFT JOIN (
     SELECT m3.ntic, m3.id, TRUE AS hit
     FROM ph_moving m3
-    JOIN T5 o ON o.ntic = m3.ntic AND o.id <> m3.id
+    JOIN T5r o ON o.ntic = m3.ntic AND o.id <> m3.id
     JOIN thing_combat_defs od ON od.thing_type = o.type
-    JOIN H4 oh ON oh.ntic = o.ntic AND oh.thing_id = o.id AND oh.alive
+    JOIN H5 oh ON oh.ntic = o.ntic AND oh.thing_id = o.id AND oh.alive
     WHERE ABS(o.x - (m3.x + m3.mx)) < od.radius + m3.radius
       AND ABS(o.y - (m3.y + m3.my)) < od.radius + m3.radius
     GROUP BY m3.ntic, m3.id
@@ -984,7 +1064,7 @@ T6 AS (
     CASE WHEN s.id IS NULL THEN t.mom_y WHEN s.blocked THEN CAST(0 AS FLOAT)
          WHEN s.skull OR s.airborne THEN t.mom_y ELSE CAST(t.mom_y * ${FRICTION} AS FLOAT) END AS mom_y,
     t.type, t.flags
-  FROM T5 t LEFT JOIN ph_step s ON s.ntic = t.ntic AND s.id = t.id
+  FROM T5r t LEFT JOIN ph_step s ON s.ntic = t.ntic AND s.id = t.id
 ),
 T7 AS (
   -- Anything below STOPSPEED stands still.
@@ -993,4 +1073,33 @@ T7 AS (
     CASE WHEN ABS(t.mom_x) <= ${STOPSPEED} AND ABS(t.mom_y) <= ${STOPSPEED} THEN CAST(0 AS FLOAT) ELSE t.mom_y END AS mom_y,
     t.type, t.flags
   FROM T6 t
+),
+-- ---------------------------------------------------------------- 35_cs_boss
+M3 AS (
+  -- A_BossDeath for E1M8: once every boss is dead, tag 666 lowers to its
+  -- lowest neighbouring floor. (E2M8's and E3M8's exits are the level flow's.)
+  SELECT * FROM M2
+  UNION ALL
+  SELECT q.* FROM (
+    SELECT s.ntic, ${map_id} AS map_id, s.id AS sector_id, CAST(NULL AS INT) AS source_line_id,
+           'floor_lower' AS mover_type, 'floor' AS plane, -1 AS direction,
+           MIN(o.floor_height) AS bottom_height, s.floor_height AS top_height, 1.0D AS speed, 0.0D AS move_carry,
+           0 AS wait_tics, 0 AS countdown, CAST(NULL AS INT) AS next_ceiling, CAST(NULL AS INT) AS next_floor,
+           CAST(NULL AS STRING) AS target_floor_tex, FALSE AS moved_this_tick, FALSE AS crush
+    FROM (
+      SELECT h.ntic FROM boss_actions ba
+      JOIN maps m ON m.name = ba.map_name AND m.map_id = ${map_id}
+      JOIN T7 t ON t.type = ba.boss_type
+      JOIN H5 h ON h.ntic = t.ntic AND h.thing_id = t.id
+      WHERE ba.action = 'lower_666'
+      GROUP BY h.ntic, ba.map_name
+      HAVING SUM(CASE WHEN h.alive THEN 1 ELSE 0 END) = 0
+    ) ready
+    JOIN S2 s ON s.ntic = ready.ntic AND s.tag = 666
+    JOIN sector_adjacency a ON a.map_id = ${map_id} AND a.sector_id = s.id AND a.other_id <> a.sector_id
+    JOIN S2 o ON o.ntic = s.ntic AND o.id = a.other_id
+    GROUP BY s.ntic, s.id, s.floor_height
+    HAVING MIN(o.floor_height) < s.floor_height
+  ) q
+  LEFT ANTI JOIN M2 m ON m.ntic = q.ntic AND m.sector_id = q.sector_id
 ),

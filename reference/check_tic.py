@@ -33,7 +33,7 @@ KEYS = {"S": ("id",), "M": ("sector_id",), "E": ("player_thing_id", "line_id", "
         "N": ("thing_id",), "X": ("effect_id",), "W": ("player_thing_id",),
         "O": ("player_thing_id", "weapon_id"), "U": ("thing_id",),
         "L": ("player_thing_id", "sector_id"), "Y": ("line_id",),
-        "Q": ("projectile_id",), "Z": ("thing_id",)}
+        "Q": ("projectile_id",), "Z": ("thing_id",), "F": ("sector_id",)}
 
 
 def same(a, b):
@@ -96,11 +96,13 @@ def main():
     ap.add_argument("--run", type=Path, default=ROOT / "reference/run-e1m1-b")
     ap.add_argument("--data", type=Path, default=ROOT / "data/freedoom1")
     ap.add_argument("--mode", choices=("step", "recursive"), default="step")
-    ap.add_argument("--tics", type=int, default=1200)
+    ap.add_argument("--tics", type=int, default=None)
     args = ap.parse_args()
 
     spark = game.connect()
     run = game.load_run_for_tics(spark, args.data, args.run)
+    if args.tics is None:
+        args.tics = run.tics
     t0 = time.perf_counter()
     if args.mode == "step":
         got = game.step_all(spark, run, args.tics, args.run)

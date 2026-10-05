@@ -244,3 +244,108 @@ class Bot:
             attack = abs(off) < 15
         self.moving = fwd > 0.5 and self.wiggle == 0
         return (skill, fwd, strafe, run, turn, attack, None, use)
+
+
+class TourBot:
+    """With IDCLIP on, visit the map's special lines one after another and
+    trigger each the way it is meant to be: walk across a W line from its
+    front, press use facing an S/D line, shoot a G line. Exits are skipped (the
+    level would end), and at most `per_mechanic` lines of each mechanic are
+    visited, nearest first, so one run covers every mechanic the map has."""
+
+    def __init__(self, data, map_id, per_mechanic=3, timeout=240):
+        def table(name):
+            t = pq.read_table(Path(data) / f"{name}.parquet")
+            if "map_id" in t.column_names:
+                t = t.filter(pc.equal(t.column("map_id"), map_id))
+            return t.to_pylist()
+        verts = {v["id"]: (v["x"], v["y"]) for v in table("vertexes")}
+        defs = {d["special"]: d for d in table("line_special_defs")}
+        self.targets = []
+        for ld in table("linedefs"):
+            d = defs.get(ld["special"])
+            if d is None or d["mechanic"] is None or ld["special"] in EXIT_SPECIALS:
+                continue
+            how = ("use" if d["use_activated"] else "cross" if d["cross_activated"]
+                   else "shoot" if d["shoot_activated"] else None)
+            if how is None:
+                continue
+            a, b = verts[ld["v1_id"]], verts[ld["v2_id"]]
+            length = math.dist(a, b) or 1.0
+            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            # The front is the right of v1 -> v2.
+            normal = ((b[1] - a[1]) / length, -(b[0] - a[0]) / length)
+            self.targets.append({"line": ld["id"], "mechanic": d["mechanic"], "how": how,
+                                 "mid": mid, "normal": normal})
+        self.per_mechanic = per_mechanic
+        self.timeout = timeout
+        self.plan = None
+        self.current = None
+        self.stage = 0
+        self.since = 0
+        self.last = (0.0, 0.0)
+        self.angle = 0.0
+        self.done = []
+
+    def observe(self, snap):
+        self.last = (snap["x"], snap["y"])
+        self.angle = snap["angle"]
+
+    def _make_plan(self):
+        here, left, plan = self.last, list(self.targets), []
+        counts = collections.Counter()
+        while left:
+            left.sort(key=lambda t: math.dist(here, t["mid"]))
+            pick = next((t for t in left if counts[t["mechanic"]] < self.per_mechanic), None)
+            if pick is None:
+                break
+            left.remove(pick)
+            counts[pick["mechanic"]] += 1
+            plan.append(pick)
+            here = pick["mid"]
+        self.plan = plan
+
+    def _steer(self, goal, fwd_speed=1.0):
+        x, y = self.last
+        bearing = math.degrees(math.atan2(goal[1] - y, goal[0] - x))
+        diff = (bearing - self.angle + 540.0) % 360.0 - 180.0
+        turn = max(-12.0, min(12.0, -diff))
+        fwd = fwd_speed if abs(diff) < 25 else 0.0
+        return fwd, turn, diff
+
+    def command(self, tic, skill, monsters=(), sector=None):
+        if self.plan is None:
+            self._make_plan()
+        fwd, strafe, turn, run, attack, use = 0.0, 0.0, 0.0, False, False, False
+        if self.current is None and self.plan:
+            self.current, self.stage, self.since = self.plan.pop(0), 0, tic
+        t = self.current
+        if t is not None:
+            mx, my = t["mid"]
+            nx, ny = t["normal"]
+            front = (mx + nx * 40, my + ny * 40)
+            behind = (mx - nx * 40, my - ny * 40)
+            if self.stage == 0:                      # get in front of the line
+                fwd, turn, _ = self._steer(front)
+                if math.dist(self.last, front) < 10:
+                    self.stage = 1
+            elif t["how"] == "cross":                # walk through it
+                fwd, turn, _ = self._steer(behind, 0.6)
+                if math.dist(self.last, behind) < 10:
+                    self.stage = 9
+            else:                                    # face it, then use or shoot
+                _, turn, diff = self._steer(t["mid"])
+                if abs(diff) < 3:
+                    if t["how"] == "use":
+                        use = True
+                        self.stage = 9
+                    else:
+                        attack = True
+                        self.stage += 1
+                        if self.stage > 12:
+                            self.stage = 9
+            if self.stage == 9 or tic - self.since > self.timeout:
+                self.done.append({"line": t["line"], "mechanic": t["mechanic"], "how": t["how"],
+                                  "tic": tic, "completed": self.stage == 9})
+                self.current = None
+        return (skill, fwd, strafe, run, turn, attack, None, use)

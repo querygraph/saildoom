@@ -47,7 +47,8 @@ CONSTANTS = {
     "SIGHT_RANGE": "1200.0D", "MIN_WALK_OPENING": "56.0D", "MONSTER_STEP": "8.0D",
     "CHASE_AXIS_DEADBAND": "10.0D", "CHASE_SWAP_CHANCE": "200.0D", "CHASE_MOVECOUNT_MASK": "15",
     "SKULL_CHARGE_SPEED": "20.0D", "SKULL_HIT_REACH": "36.0D", "TICRATE": "35",
-    "HITSCAN_SPREAD_UNITS": "4096.0D", "SHADOW_MISS_UNITS": "2048.0D", "DAMAGE_FLOOR_INTERVAL": "32",
+    "MONSTER_RESPAWN_TICS": "420", "MONSTER_RESPAWN_EFFECT_ID_BASE": "4100000000",
+    "EFFECT_ID_TIC_SPAN": "4096", "HITSCAN_SPREAD_UNITS": "4096.0D", "SHADOW_MISS_UNITS": "2048.0D", "DAMAGE_FLOOR_INTERVAL": "32",
 }
 
 STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
@@ -55,7 +56,8 @@ STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
                  "line_special_defs", "sector_adjacency", "sector_special_defs",
                  "pickup_defs", "pickup_messages", "ammo_defs", "weapon_defs", "weapon_frames",
                  "projectile_defs", "chase_dir_defs", "thing_role_defs", "thing_ai_frames",
-                 "thing_sprite_defs", "vertexes")
+                 "thing_sprite_defs", "vertexes", "walltex_meta",
+                 "boss_actions", "maps")
 
 
 @dataclass
