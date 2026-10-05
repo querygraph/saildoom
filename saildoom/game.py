@@ -48,7 +48,7 @@ CONSTANTS = {
     "CHASE_AXIS_DEADBAND": "10.0D", "CHASE_SWAP_CHANCE": "200.0D", "CHASE_MOVECOUNT_MASK": "15",
     "SKULL_CHARGE_SPEED": "20.0D", "SKULL_HIT_REACH": "36.0D", "TICRATE": "35",
     "MONSTER_RESPAWN_TICS": "420", "MONSTER_RESPAWN_EFFECT_ID_BASE": "4100000000",
-    "EFFECT_ID_TIC_SPAN": "4096", "HITSCAN_SPREAD_UNITS": "4096.0D", "SHADOW_MISS_UNITS": "2048.0D", "DAMAGE_FLOOR_INTERVAL": "32",
+    "EFFECT_ID_TIC_SPAN": "4096", "ACTIVE_SOUND_ODDS": "320", "HITSCAN_SPREAD_UNITS": "4096.0D", "SHADOW_MISS_UNITS": "2048.0D", "DAMAGE_FLOOR_INTERVAL": "32",
 }
 
 STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
@@ -57,7 +57,7 @@ STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
                  "pickup_defs", "pickup_messages", "ammo_defs", "weapon_defs", "weapon_frames",
                  "projectile_defs", "chase_dir_defs", "thing_role_defs", "thing_ai_frames",
                  "thing_sprite_defs", "vertexes", "walltex_meta",
-                 "boss_actions", "maps")
+                 "boss_actions", "maps", "thing_sound_defs")
 
 
 @dataclass
@@ -102,20 +102,23 @@ def _world(run_dir):
     return World(Path(run_dir) / "state")
 
 
-def _step_sql(world):
+TIC_FILES = ("tic_doors.sql", "tic_step.sql", "tic_combat.sql", "tic_projectiles.sql",
+             "tic_sound.sql", "tic_monsters.sql", "tic_out.sql")
+
+
+def _step_sql(world, files=TIC_FILES):
     """The tic: CTEs from `prev` (world rows at tic t) to `step`, world rows at t + 1."""
     body = "\n".join(strip_comments((ROOT / "sql" / name).read_text()).strip().rstrip(",") + ","
-                     for name in ("tic_doors.sql", "tic_step.sql", "tic_combat.sql",
-                                  "tic_projectiles.sql", "tic_monsters.sql", "tic_out.sql"))
+                     for name in files)
     packed = "\n  UNION ALL\n  ".join(
         world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic")
-        for kind in KINDS)
+        for kind in world.kinds)
     return (world.unpack_ctes("prev") + ",\n" + body
             + f"\nstep AS (\n  {packed}\n)")
 
 
 def _recorded(world, where):
-    return "\n  UNION ALL\n  ".join(world.recorded_rows(kind, where) for kind in KINDS)
+    return "\n  UNION ALL\n  ".join(world.recorded_rows(kind, where) for kind in world.kinds)
 
 
 def step_all(spark, run, tics, run_dir):
@@ -170,7 +173,7 @@ def _level_start_sql(spark, data, run, run_dir, cheats=None):
     cheats = cheats or run_cheats(run_dir)
     body = strip_comments((ROOT / "sql" / "level_start.sql").read_text())
     packed = "\n  UNION ALL\n  ".join(
-        world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic") for kind in KINDS)
+        world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic") for kind in world.kinds)
     sql = (f"WITH RECURSIVE prev AS (\n  {_recorded(world, 'tic < 0')}\n),\n"
            + world.unpack_ctes("prev") + ",\n" + body.strip().rstrip(",") + ","
            + f"\nstep AS (\n  {packed}\n)\nSELECT * FROM step")

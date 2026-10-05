@@ -64,7 +64,10 @@ def snapshot(cur, table, maps=None):
                   float(v) if f.type == pa.float64() else bytes(v) if f.type == pa.binary() else v)
                   for v in col]
         arrays.append(pa.array(values, f.type))
-    return pa.Table.from_arrays(arrays, schema=pa.schema(fields))
+    table = pa.Table.from_arrays(arrays, schema=pa.schema(fields))
+    # CedarDB returns rows in no fixed order; compare and store them sorted.
+    keys = [(f.name, "ascending") for f in fields if not pa.types.is_binary(f.type)]
+    return table.sort_by(keys) if keys and table.num_rows else table
 
 
 class Recorder:
@@ -79,6 +82,10 @@ class Recorder:
             table = snapshot(cur, t)
             pq.write_table(table, self.out / "initial" / f"{t}.parquet")
             self.last[t] = self._view(t, table)
+        cur.execute("SELECT 'sound_events_event_id_seq' AS name, last_value FROM sound_events_event_id_seq")
+        name, value = cur.fetchone()
+        pq.write_table(pa.table({"name": [name], "last_value": [int(value)]}),
+                       self.out / "initial" / "_sequences.parquet")
 
     def _view(self, t, table):
         if t in self.keyed:
@@ -98,6 +105,8 @@ class Recorder:
         self.calls.append({"n": n, "name": name, "params": [repr(p) for p in params],
                            "rows": [[repr(v) for v in r] for r in rows], "changed": changed})
         print(f"{n:5d} {name}{tuple(params)} -> {len(rows)} rows, changed {changed}", flush=True)
+        if n % 50 == 0:
+            self.save()
 
     def save(self):
         (self.out / "calls.json").write_text(json.dumps(self.calls, indent=0))

@@ -29,4 +29,5 @@ L_out AS (SELECT * FROM L1),
 Y_out AS (SELECT * FROM Y1),
 Q_out AS (SELECT * FROM Q3),
 Z_out AS (SELECT * FROM Z2),
-F_out AS (SELECT * FROM F1)
+F_out AS (SELECT * FROM F1),
+PI_out AS (SELECT * FROM PI1)

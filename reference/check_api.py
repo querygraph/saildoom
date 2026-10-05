@@ -38,7 +38,12 @@ def norm(v):
     return repr(v)
 
 
+# Wall-clock columns: when a demo was recorded, a save made, a player last seen.
+CLOCK_COLUMNS = {"recorded_at", "saved_at", "claimed_at", "last_seen", "created_at", "updated_at"}
+
+
 def rows_of(table, maps=None, keyed=False):
+    table = table.drop_columns([c for c in table.column_names if c in CLOCK_COLUMNS])
     if keyed:
         table = table.filter(pc.is_in(table["map_id"], pa.array(maps or [-1], pa.int32())))
     return sorted(tuple(norm(v) for v in r.values()) for r in table.to_pylist())

@@ -133,6 +133,36 @@ class Backend:
                 cols.append(f"t.{f.name}")
         self.store.write(table, f"SELECT {', '.join(cols)} FROM {table} t {joins}")
 
+    def sequence(self, table):
+        """The last value of a table's serial column (CedarDB's sequence)."""
+        seqs = self.store.root / "sequences.json"
+        values = json.loads(seqs.read_text()) if seqs.exists() else {}
+        if table not in values:
+            initial = Path(self.store.paths.get("_sequences", ""))
+            if initial.exists():
+                rows = {r["name"]: r["last_value"] for r in pq.read_table(initial).to_pylist()}
+                values[table] = rows.get(f"{table}_event_id_seq", 0)
+            else:
+                m = self.store.query(f"SELECT MAX(event_id) AS m FROM {table}")[0]["m"]
+                values[table] = int(m or 0)
+            seqs.write_text(json.dumps(values))
+        return values[table]
+
+    def set_sequence(self, table, value):
+        seqs = self.store.root / "sequences.json"
+        values = json.loads(seqs.read_text()) if seqs.exists() else {}
+        values[table] = int(value)
+        seqs.write_text(json.dumps(values))
+
+    def replace_rows(self, table, where, rows_sql):
+        """DELETE FROM table WHERE where; INSERT the rows of rows_sql -- an
+        upsert, as one new version. rows_sql yields the table's columns."""
+        schema = self.store.arrow_schema(table)
+        cols = ", ".join(f.name for f in schema)
+        casts = ", ".join(f"CAST(n.{f.name} AS {sql_type(f.type)}) AS {f.name}" for f in schema)
+        self.store.write(table, f"""SELECT {cols} FROM {table} WHERE NOT ({where})
+                                    UNION ALL SELECT {casts} FROM ({rows_sql}) n""")
+
     def call(self, name, params):
         fn = self.handlers.get(name)
         if fn is None:
@@ -175,6 +205,33 @@ def install(doom_sql, backend):
     doom_sql.execute_prepared = execute_prepared
     doom_sql._reprepare = lambda cur, name, parameter_types, statement: None
     return Cursor(backend)
+
+
+PG_CASTS = (("::double precision", "::DOUBLE"), ("::float8", "::DOUBLE"), ("::real", "::FLOAT"),
+            ("::float4", "::FLOAT"), ("::text", "::STRING"), ("::smallint", "::INT"),
+            ("::bigint", "::BIGINT"), ("::int", "::INT"), ("::boolean", "::BOOLEAN"))
+
+
+def literal(v):
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return f"CAST('{v!r}' AS DOUBLE)"
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def pg(sql, params=()):
+    """A client query file in Spark SQL: $n parameters folded in as literals,
+    Postgres casts spelled the Spark way."""
+    for i in range(len(params), 0, -1):
+        sql = sql.replace(f"${i}", literal(params[i - 1]))
+    for a, b in PG_CASTS:
+        sql = sql.replace(a, b).replace(a.upper(), b)
+    return sql
 
 
 def sql_type(t):

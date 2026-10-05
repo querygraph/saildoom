@@ -4,8 +4,7 @@
 -- Ported from cedardb/sqldoom sql/runtime/functions: 26_cs_monsters (retarget,
 -- noise, think, step, move, float, chase, attack, barrel, blast, deaths, each
 -- gated by doom_cs_monster_plan), 28_cs_sector_fx and 29_cs_thing_physics.
--- 25_cs_sound writes nothing the game reads back (the fired_this_tick it
--- clears is set again by the think stage), and is left out. P_NightmareRespawn
+-- 25_cs_sound is tic_sound.sql, before this file. P_NightmareRespawn
 -- runs on skill 4; -respawn is the deathmatch phase's. 35_cs_boss lowers
 -- E1M8's tag 666; the E2M8/E3M8 exits are the level flow's.
 mo_player AS (
@@ -40,7 +39,7 @@ I3 AS (
     SELECT a.*,
       a.target_thing_id IS NOT NULL
         AND ((a.target_thing_id = ${player} AND NOT p.alive) OR COALESCE(NOT th.alive, FALSE)) AS dropped
-    FROM I2 a
+    FROM I2s a
     JOIN mo_player p ON p.ntic = a.ntic
     LEFT JOIN H2 th ON th.ntic = a.ntic AND th.thing_id = a.target_thing_id
   ) ai
