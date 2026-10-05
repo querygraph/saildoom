@@ -122,18 +122,46 @@ produce the next version of a kind.
   (`sql/client/camera_pose.sql`); `scripts/simulate_run.py` does the same, and
   then every pose matches.
 
+## SQLDoom's API on Sail
+
+`saildoom/backend.py` answers the statements SQLDoom's client prepares
+(`doom_sql.py`), and the raw SQL it sends, from Parquet tables on Sail:
+`install(doom_sql, backend)` swaps them in. A game tic runs the same tic SQL
+as the recursive query, for one tic, plus `tic_staging.sql` for the staging
+tables SQLDoom keeps. The rest is `saildoom/api/`: menus, level flow, save and
+load, intermission, finale, demos, cheats, the automap and its renderer.
+
+`reference/trace_api.py` records a scenario on CedarDB: every call, the rows it
+returned, and every table it changed. `reference/check_api.py` replays it on
+Sail and compares call by call.
+
+- `menus`: 509 calls, all match.
+- `campaign`: 4,314 calls, all match. E1M1 with cheats, weapon slots and the
+  automap; the exit and intermission; E1M2 carried over, saved and loaded; the
+  secret exit; E1M8 and the finale; a demo recorded and played back by the
+  attract loop. Seven calls return doubles a few ulps apart (libm). The
+  trace's one automap frame predates frame recording.
+- `automap`: 526 calls, all match; its ten frames (grid, pan, zoom, fit, both
+  IDDT levels) are byte-identical to CedarDB's.
+- `sound_events.event_id` is compared as a set per tic: both engines use the
+  same sequence values in a tic, but CedarDB's order among one tic's inserts
+  follows its plan.
+
 ## Not done yet
 
-- The specials E1M1 never triggers: teleports, crushers, stairs, light,
-  donut and raise specials, ceilings, stop. Nightmare respawns, E1M8's boss
-  floor, deathmatch.
+- Deathmatch and the multiplayer API (`39_mp.sql`, `42_api.sql`), item
+  respawn, and a trace for them; the menu screen renderer
+  (`client/render_screen.sql`) and level stats.
+- Loading a WAD without CedarDB: the map and game tables come from CedarDB's
+  export today.
 - One renderer frame of the 1,200-tic run (tic 730) draws the floor under the
   player with the wrong flat (17,443 pixels); it does so from CedarDB's own
   recorded state too, so it is the renderer, not the game. The other 49
   differing frames are libm last bits as before.
 - Interactive play. At 168 ms a tic in the recursive form and 0.7 s for a
   single frame, Sail is not interactive; throughput comes from batches,
-  which suits rendering a recorded or simulated run.
+  which suits rendering a recorded or simulated run. SQLDoom's own client has
+  not yet been run against the API backend.
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)
 
