@@ -158,3 +158,60 @@ class Campaign:
 
 
 SCENARIOS["campaign"] = Campaign
+
+
+class Automap:
+    """The automap renderer: E1M1 walked a little, then a frame after each
+    change of the view -- default, grid, unfollowed and panned, zoomed in and
+    out, fitted, and both IDDT levels (all lines, then things too)."""
+
+    MAPS = ("E1M1",)
+
+    @classmethod
+    def maps(cls, cur, sql):
+        stages = Campaign._stages(cur, sql)
+        return [stages[m]["map_id"] for m in cls.MAPS]
+
+    @classmethod
+    def run(cls, cur, sql):
+        import json
+        from pathlib import Path
+        stage = Campaign._stages(cur, sql)["E1M1"]
+        m, p = stage["map_id"], stage["player_thing_id"]
+        commands = json.loads((Path(__file__).parent / "run-e1m1-b/commands.json").read_text())
+        sql.set_screen(cur, "game")
+        sql.enter_level(cur, m, p, 2)
+
+        def play(tics, offset):
+            for i in range(tics):
+                sql.execute_game_tic(cur, m, p, (2, *commands[offset + i]["command"][1:]))
+                sql.finish_game_tic(cur, m, p)
+
+        def frame():
+            sql.render_automap(cur, m, p)
+
+        play(150, 0)
+        frame()
+        sql.automap_toggle(cur, m, p, "grid")
+        frame()
+        sql.automap_toggle(cur, m, p, "follow")
+        sql.automap_pan(cur, m, p, 96, -40)
+        frame()
+        sql.automap_zoom(cur, m, p, 1.3)
+        frame()
+        sql.automap_zoom(cur, m, p, 0.37)
+        frame()
+        sql.automap_fit(cur, m, p)
+        frame()
+        sql.automap_toggle(cur, m, p, "cheat")
+        frame()
+        sql.automap_toggle(cur, m, p, "cheat")
+        frame()
+        sql.automap_toggle(cur, m, p, "follow")
+        sql.automap_zoom(cur, m, p, 2.0)
+        play(100, 150)
+        frame()
+        sql.automap_toggle(cur, m, p, "grid")
+        sql.automap_toggle(cur, m, p, "cheat")
+        frame()
+SCENARIOS["automap"] = Automap

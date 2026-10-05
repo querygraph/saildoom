@@ -82,6 +82,7 @@ TRANSIENT_KINDS = {
     "HH": ("hh", "hitscan_hits"),
     "SE": ("se", "sound_events"),
     "TT": ("tt", "tic_trace"),
+    "SQ": ("sq", "_sound_attempts"),
 }
 
 

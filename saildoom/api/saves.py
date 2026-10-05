@@ -30,6 +30,10 @@ def register(b):
                            f"SELECT {slot} AS slot, {cols} FROM {table} WHERE map_id = {m}")
         return [(slot,)]
 
+    @b.raw("SELECT skill FROM save_slots WHERE slot=%s")
+    def slot_skill(slot):
+        return [(r["skill"],) for r in s.query(f"SELECT skill FROM save_slots WHERE slot = {int(slot)}")]
+
     @b.handler("doom_load_game_call")
     def load_game(slot):
         row = s.query(f"SELECT COALESCE(MIN(map_id), -1) AS m FROM save_slots WHERE slot = {slot}")[0]

@@ -12,6 +12,7 @@ same state.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -93,6 +94,17 @@ class Recorder:
             table = table.filter(pc.is_in(table["map_id"], pa.array(self.maps, pa.int32())))
         return table
 
+    def value(self, n, v):
+        """A value as Python source. A bytea (a rendered frame) is stored beside
+        calls.json and recorded as its digest, which check_api.py compares."""
+        if isinstance(v, (memoryview, bytes, bytearray)):
+            v = bytes(v)
+            digest = hashlib.sha256(v).hexdigest()
+            (self.out / "bytes").mkdir(exist_ok=True)
+            (self.out / "bytes" / f"{n:05d}-{digest[:12]}.bin").write_bytes(v)
+            return repr(f"sha256:{digest}:{len(v)}")
+        return repr(v)
+
     def record(self, name, params, rows):
         n = len(self.calls)
         changed = []
@@ -103,7 +115,7 @@ class Recorder:
                 self.last[t] = table
                 changed.append(t)
         self.calls.append({"n": n, "name": name, "params": [repr(p) for p in params],
-                           "rows": [[repr(v) for v in r] for r in rows], "changed": changed})
+                           "rows": [[self.value(n, v) for v in r] for r in rows], "changed": changed})
         print(f"{n:5d} {name}{tuple(params)} -> {len(rows)} rows, changed {changed}", flush=True)
         if n % 50 == 0:
             self.save()

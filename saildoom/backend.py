@@ -63,7 +63,12 @@ class Store:
         n = len(list(versions.glob("v*"))) if versions.exists() else 0
         path = versions / f"v{n:06d}"
         query = expand(strip_comments(sql), params or {})
-        self.spark.sql(query).write.parquet(str(path))
+        df = self.spark.sql(query)
+        df.write.parquet(str(path))
+        if not path.exists():
+            # Sail writes no files for an empty result; keep the schema.
+            path.mkdir(parents=True)
+            pq.write_table(df.limit(0).toArrow(), path / "part-0.parquet")
         self.paths[name] = str(path)
         self._register(name)
         self._save()
@@ -138,8 +143,8 @@ class Backend:
         seqs = self.store.root / "sequences.json"
         values = json.loads(seqs.read_text()) if seqs.exists() else {}
         if table not in values:
-            initial = Path(self.store.paths.get("_sequences", ""))
-            if initial.exists():
+            initial = self.store.paths.get("_sequences")
+            if initial:
                 rows = {r["name"]: r["last_value"] for r in pq.read_table(initial).to_pylist()}
                 values[table] = rows.get(f"{table}_event_id_seq", 0)
             else:
@@ -210,6 +215,31 @@ def install(doom_sql, backend):
 PG_CASTS = (("::double precision", "::DOUBLE"), ("::float8", "::DOUBLE"), ("::real", "::FLOAT"),
             ("::float4", "::FLOAT"), ("::text", "::STRING"), ("::smallint", "::INT"),
             ("::bigint", "::BIGINT"), ("::int", "::INT"), ("::boolean", "::BOOLEAN"))
+
+
+def cedar_real(v):
+    """The real CedarDB stores for a Python float sent as a parameter.
+    psycopg2 sends repr(v) as a numeric literal. Written with an exponent it
+    is a double, rounded to the nearest float; written plainly CedarDB turns
+    its digits into a float and divides by a float power of ten, which is a
+    different float a third of the time (probed against 2,000 values)."""
+    import numpy as np
+    from decimal import Decimal
+    v = float(v)
+    if v == 0:
+        return 0.0
+    text = repr(v)
+    if "e" in text or "E" in text or "inf" in text or "nan" in text:
+        return float(np.float32(v))
+    sign, digits, exp = Decimal(text).as_tuple()
+    m = int("".join(map(str, digits))) * (-1 if sign else 1)
+    f = np.float32(m) / np.float32(10.0 ** -exp) if exp < 0 else np.float32(m) * np.float32(10.0 ** exp)
+    return float(f)
+
+
+def real_literal(v):
+    import numpy as np
+    return f"CAST('{np.float32(cedar_real(v))}' AS FLOAT)"
 
 
 def literal(v):

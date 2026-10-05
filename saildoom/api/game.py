@@ -11,7 +11,7 @@ other maps' rows plus this tic's."""
 from pathlib import Path
 
 from .. import game
-from ..backend import literal, pg
+from ..backend import literal, pg, real_literal
 from ..sqlmacro import strip_comments
 from ..world import KINDS, TRANSIENT_KINDS, World
 
@@ -42,6 +42,10 @@ def register(b):
             s._register(name)
 
     def run_tic(map_id, player, skill):
+        if "_sound_attempts" not in s.paths:
+            import pyarrow as pa
+            s.write_arrow("_sound_attempts", pa.table({"map_id": pa.array([], pa.int32()),
+                                                      "attempts": pa.array([], pa.int64())}))
         w = world()
         for _, table in ALL_KINDS.values():
             b.spark.sql(f"SELECT 0 AS tic, * FROM {table}").createOrReplaceTempView("rec_" + table)
@@ -67,16 +71,16 @@ def register(b):
             s.write(table, f"""SELECT {cols} FROM {table} WHERE {keep}
                                UNION ALL
                                SELECT {fields} FROM _tic_out WHERE kind = '{kind}'""")
-        top = s.query(f"SELECT MAX(event_id) AS m FROM sound_events")[0]["m"]
-        if top is not None and top > b.sequence("sound_events"):
-            b.set_sequence("sound_events", top)
+        attempts = s.query(f"SELECT SUM(attempts) AS n FROM _sound_attempts WHERE map_id = {map_id}")[0]["n"]
+        if attempts:
+            b.set_sequence("sound_events", b.sequence("sound_events") + int(attempts))
         row = s.query(f"SELECT stages FROM tic_trace WHERE map_id = {map_id} AND player_thing_id = {player}")
         return bool(row and row[0]["stages"] & 65536)
 
     @b.handler("doom_game_tic")
     def game_tic(map_id, player, skill, fwd, strafe, running, turn, attack, switch, use):
         bit = 1 if skill <= 1 else 2 if skill == 2 else 4
-        f = lambda v: f"CAST({literal(str(v))} AS FLOAT)"
+        f = real_literal
         exists = bool(s.query(f"SELECT 1 FROM game_tic_commands WHERE map_id = {map_id} AND player_thing_id = {player}"))
         new = f"""SELECT {map_id} AS map_id, {player} AS player_thing_id, {{serial}} AS command_serial,
                  {skill} AS skill, {bit} AS skill_bit, {f(fwd)} AS move_fwd, {f(strafe)} AS move_strafe,

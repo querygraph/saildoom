@@ -63,20 +63,28 @@ HH_out AS (
   LEFT ANTI JOIN (SELECT DISTINCT ntic, shot_serial FROM hitscan_hits) s
     ON s.ntic = h.ntic AND h.player_thing_id = ${player} AND s.shot_serial = h.shot_serial
 ),
+sound_attempts AS (
+  -- Every attempted row takes a value from the sequence, the ones ON CONFLICT
+  -- drops included, as in Postgres. CedarDB's order among one tic's rows
+  -- follows its plan, not the order the UNION ALL is written in; these take
+  -- the written order, so a tic gets the same ids, perhaps assigned to its
+  -- rows in another order (reference/check_api.py compares them that way).
+  SELECT c.*, ${se_next} + ROW_NUMBER() OVER (PARTITION BY c.ntic ORDER BY c.branch, c.sub, c.event_key) - 1 AS event_id,
+         ROW_NUMBER() OVER (PARTITION BY c.ntic, c.event_key ORDER BY c.branch, c.sub) AS rn
+  FROM sound_candidates c WHERE c.sound_name IS NOT NULL
+),
 SE_out AS (
-  -- 25_cs_sound's INSERT ... ON CONFLICT (map_id, event_key) DO NOTHING, with
-  -- event_id from the sequence the backend keeps (${se_next} is its next value).
+  -- 25_cs_sound's INSERT ... ON CONFLICT (map_id, event_key) DO NOTHING.
   SELECT * FROM SE0
   UNION ALL
-  SELECT q.ntic, ${se_next} + ROW_NUMBER() OVER (ORDER BY q.branch, q.sub, q.event_key) - 1 AS event_id,
-         ${map_id} AS map_id, q.event_key, CAST(q.level_tic AS BIGINT) AS level_tic, q.sound_name,
-         q.source_thing_id, CAST(q.source_x AS FLOAT) AS source_x, CAST(q.source_y AS FLOAT) AS source_y
-  FROM (
-    SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.event_key ORDER BY c.branch, c.sub) AS rn
-    FROM sound_candidates c WHERE c.sound_name IS NOT NULL
-  ) q
+  SELECT q.ntic, q.event_id, ${map_id} AS map_id, q.event_key, CAST(q.level_tic AS BIGINT) AS level_tic,
+         q.sound_name, q.source_thing_id, CAST(q.source_x AS FLOAT) AS source_x, CAST(q.source_y AS FLOAT) AS source_y
+  FROM sound_attempts q
   LEFT ANTI JOIN SE0 e ON e.ntic = q.ntic AND e.event_key = q.event_key
   WHERE q.rn = 1
+),
+SQ_out AS (
+  SELECT ntic, ${map_id} AS map_id, CAST(count(*) AS BIGINT) AS attempts FROM sound_attempts GROUP BY ntic
 ),
 TT_out AS (
   -- doom_run_tic_core's stage trace.
