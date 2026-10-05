@@ -140,7 +140,8 @@ CTE defined outside an inner recursive query was reset from inside it and its
 consumed plan run again (a `RepartitionExec` panic); and DataFusion's
 `AggregateExec` keeps its MIN/MAX dynamic filter through `reset_state`, so a
 recursive term's later iterations scanned with the first one's bound (a
-barrel's blast found no blast radius). The last is a DataFusion bug; the fork
+barrel's blast found no blast radius). The last is a DataFusion bug
+([apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054)); the fork
 turns that pushdown off in plans with a recursive query.
 Measured against main, both built with Sail's release profile (fat LTO), same
 machine, default settings:
