@@ -85,24 +85,63 @@ execution, which brings the 10 cores to 38.8 frames a second.
     `RemoveCachedRemoteRelationCommand` handler is a no-op), so they cannot
     hold per-frame intermediates.
 
+## The game on Sail
+
+The tic runs on the recursive-CTE fork as one `WITH RECURSIVE` query whose
+rows are the world: a relation of 20 kinds (player, sectors, movers, line
+events and activations, switches, sidedefs, render segs, Things, their health,
+monster AI, render Things, effects, weapons, owned weapons, picked-up items,
+secrets, automap lines, projectiles, monster deaths), one struct column per
+kind (`saildoom/world.py`). SQLDoom's stages are CTE chains over it, in tic
+order: `tic_doors.sql`, `tic_step.sql`, `tic_combat.sql`,
+`tic_projectiles.sql`, `tic_monsters.sql`, `tic_out.sql`. SQLDoom's
+CedarScript `if`s and plan bits become per-tic gates (a CTE of the tics on
+which a stage runs), `INSERT ... ON CONFLICT` and `UPDATE` become joins that
+produce the next version of a kind.
+
+- 1,200 tics: 202 s as one recursive query (168 ms a tic, single client), or
+  18 s with every tic computed from CedarDB's recorded state in one query (the
+  check `reference/check_tic.py --mode step` runs). Doom runs at 35 tics a
+  second; the recursive form is about 6 tics a second.
+- CedarDB arithmetic that the port has to reproduce, found by probing it:
+  `real` with an integer or a decimal literal stays `real`; `POWER` and
+  `SQRT` of a `real` are `real` (single precision throughout); casts to an
+  integer truncate; `ROUND` of a double rounds half away from zero. Postgres
+  differs on the first two. `saildoom/sqlmacro.py` has `FHYPOT` for the
+  single-precision distance.
+- The bot's float commands reach CedarDB as decimal text, which rounds to
+  `real` directly; rounding them through a double first is one ulp off now
+  and then. The port reads the commands back from `game_tic_commands`.
+- SQLDoom's camera interpolates `real - real` in single precision
+  (`sql/client/camera_pose.sql`); `scripts/simulate_run.py` does the same, and
+  then every pose matches.
+
 ## Not done yet
 
-- SQLDoom's game logic on Sail. The tic is procedural (CedarScript) and
-  updates about 40 tables in place; Sail has neither stored procedures nor
-  `UPDATE` on in-memory tables, and `WITH RECURSIVE` is a `todo` on main
-  (`sail-plan/src/resolver/query/recursion.rs`), so many tics cannot run in
-  one recursive plan. On main a tic would be a sequence of queries, each
-  computing a table's next version from the current ones, with SQLDoom's
-  control flow (its CedarScript `if`s and stage bits) in a small driver.
-- Interactive play. At 0.7 s a frame for one frame per query, Sail main is
-  not interactive; throughput comes from batches, which suits rendering a
-  recorded or simulated run.
+- The specials E1M1 never triggers: teleports, crushers, stairs, light,
+  donut and raise specials, ceilings, stop. Nightmare respawns, E1M8's boss
+  floor, deathmatch.
+- One renderer frame of the 1,200-tic run (tic 730) draws the floor under the
+  player with the wrong flat (17,443 pixels); it does so from CedarDB's own
+  recorded state too, so it is the renderer, not the game. The other 49
+  differing frames are libm last bits as before.
+- Interactive play. At 168 ms a tic in the recursive form and 0.7 s for a
+  single frame, Sail is not interactive; throughput comes from batches,
+  which suits rendering a recorded or simulated run.
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)
 
-Three commits on Sail main `d29516a7`: recursive CTEs (`WITH RECURSIVE`), a
+Commits on Sail main `d29516a7`: recursive CTEs (`WITH RECURSIVE`), a
 recursive term that refers to its CTE more than once, and computing a CTE that
 is referenced more than once only once (it was inlined at every reference).
+Then three fixes the game found: CTEs that read the work table were treated as
+self-references and inlined, which grew the tic's plan exponentially; a shared
+CTE defined outside an inner recursive query was reset from inside it and its
+consumed plan run again (a `RepartitionExec` panic); and DataFusion's
+`AggregateExec` keeps its MIN/MAX dynamic filter through `reset_state`, so a
+recursive term's later iterations scanned with the first one's bound (a
+barrel's blast found no blast radius). The last is a DataFusion bug; the fork
+turns that pushdown off in plans with a recursive query.
 Measured against main, both built with Sail's release profile (fat LTO), same
 machine, default settings:
 
@@ -111,7 +150,8 @@ machine, default settings:
 | SQLDoom renderer as ported stage by stage (`renderer_v1.sql`) | 10,183 ms | 4,118 ms | 2.5x faster, same pixels |
 | Hand-restructured renderer (`renderer.sql`) | 698 ms | 733 ms | 5% slower |
 | Batch renderer, 105 frames a query | 45.4 ms/frame | 39.3 ms/frame | 13% faster |
-| Game tic, 525 tics as one recursive query | not supported | 33.0 s (63 ms/tic) | new |
+| Game tic, 525 tics as one recursive query (player only) | not supported | 33.0 s (63 ms/tic) | new |
+| The whole game, 1,200 tics as one recursive query | not supported | 202 s (168 ms/tic) | new |
 | TPC-DS SF1, the 22 queries that reuse a CTE | 2,794 ms | 2,870 ms | neutral (1.03x, noise) |
 | TPC-DS SF1, 4 control queries | 118 ms | 123 ms | neutral |
 

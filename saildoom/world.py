@@ -36,6 +36,8 @@ KINDS = {
     "U": ("u", "picked_up_items"),
     "L": ("l", "level_secret_discoveries"),
     "Y": ("y", "mapped_lines"),
+    "Q": ("q", "monster_projectiles"),
+    "Z": ("z", "monster_deaths"),
 }
 
 # The player row also carries the player Thing and the last movement mode.

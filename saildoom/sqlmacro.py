@@ -5,6 +5,8 @@
   PGINT(x)               Postgres' float-to-integer cast: round half to even
   DOOM_LIGHT_INDEX(l, e, a), DOOM_LIGHT_SCALE(d), DOOM_LIGHT_ZDEPTH(d)
                          SQLDoom's 43_render_light.sql functions, inlined
+  FHYPOT(dx, dy)          SQRT(POWER(dx, 2) + POWER(dy, 2)) on real arguments, as
+                         CedarDB computes it: in single precision throughout
   PRANDOM(actor, tic, use)
                          00_prandom.sql's doom_prandom: Doom's rndtable at an
                          index hashed from the three arguments
@@ -30,6 +32,8 @@ MACROS = {
         f"THEN sequence(CAST({a} AS INT), CAST({b} AS INT)) END)"),
     "PGINT": lambda x: f"CAST(bround({x}) AS INT)",
     "PRANDOM": _prandom,
+    "FHYPOT": lambda dx, dy: (
+        f"CAST(SQRT(CAST(POWER({dx}, 2) AS FLOAT) + CAST(POWER({dy}, 2) AS FLOAT)) AS FLOAT)"),
     "DOOM_LIGHT_INDEX": lambda light, extra, att: (
         f"GREATEST(0, LEAST(31, (15 - LEAST(15, GREATEST(0, "
         f"CAST(FLOOR(CAST({light} AS DOUBLE) / 16.0D) AS INT) + ({extra})))) * 4"

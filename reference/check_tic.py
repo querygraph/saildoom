@@ -32,7 +32,8 @@ KEYS = {"S": ("id",), "M": ("sector_id",), "E": ("player_thing_id", "line_id", "
         "R": ("seg_id",), "T": ("id",), "H": ("thing_id",), "I": ("thing_id",),
         "N": ("thing_id",), "X": ("effect_id",), "W": ("player_thing_id",),
         "O": ("player_thing_id", "weapon_id"), "U": ("thing_id",),
-        "L": ("player_thing_id", "sector_id"), "Y": ("line_id",)}
+        "L": ("player_thing_id", "sector_id"), "Y": ("line_id",),
+        "Q": ("projectile_id",), "Z": ("thing_id",)}
 
 
 def same(a, b):

@@ -41,13 +41,21 @@ CONSTANTS = {
     "PSPRITE_REST_Y": "32.0D", "ATTACK_Z_OFFSET": "8.0D", "AIM_SPREAD_DEGREES": "5.625D",
     "AUTOAIM_SLOPE": "0.625D", "SLOPE_UNBOUNDED": "1000000.0D", "GUNSHOT_SPREAD_UNITS": "16384.0D",
     "DROPPED_THING_ID_BASE": "100000", "PICKUP_REACH": "36.0D", "BONUSADD": "6",
-    "MESSAGE_TICS": "140",
+    "MESSAGE_TICS": "140", "MISSILE_SPAWN_Z": "32.0D", "SHADOW_SPREAD_UNITS": "4096.0D",
+    "PROJECTILE_EFFECT_ID_BASE": "3000000000000", "MISSILE_SPAWN_AHEAD": "20.0D",
+    "NIGHTMARE_MISSILE_SPEED": "20.0D", "MELEE_REACH": "68.0D", "DEFAULT_ATTACK_RANGE": "2048.0D",
+    "SIGHT_RANGE": "1200.0D", "MIN_WALK_OPENING": "56.0D", "MONSTER_STEP": "8.0D",
+    "CHASE_AXIS_DEADBAND": "10.0D", "CHASE_SWAP_CHANCE": "200.0D", "CHASE_MOVECOUNT_MASK": "15",
+    "SKULL_CHARGE_SPEED": "20.0D", "SKULL_HIT_REACH": "36.0D", "TICRATE": "35",
+    "HITSCAN_SPREAD_UNITS": "4096.0D", "SHADOW_MISS_UNITS": "2048.0D", "DAMAGE_FLOOR_INTERVAL": "32",
 }
 
 STATIC_TABLES = ("linedef_geom", "thing_blocking_defs", "thing_combat_defs",
                  "node_path_steps", "nodes", "render_segs", "linedefs",
                  "line_special_defs", "sector_adjacency", "sector_special_defs",
-                 "pickup_defs", "pickup_messages", "ammo_defs", "weapon_defs", "weapon_frames")
+                 "pickup_defs", "pickup_messages", "ammo_defs", "weapon_defs", "weapon_frames",
+                 "projectile_defs", "chase_dir_defs", "thing_role_defs", "thing_ai_frames",
+                 "thing_sprite_defs", "vertexes")
 
 
 @dataclass
@@ -95,7 +103,8 @@ def _world(run_dir):
 def _step_sql(world):
     """The tic: CTEs from `prev` (world rows at tic t) to `step`, world rows at t + 1."""
     body = "\n".join(strip_comments((ROOT / "sql" / name).read_text()).strip().rstrip(",") + ","
-                     for name in ("tic_doors.sql", "tic_step.sql", "tic_combat.sql", "tic_out.sql"))
+                     for name in ("tic_doors.sql", "tic_step.sql", "tic_combat.sql",
+                                  "tic_projectiles.sql", "tic_monsters.sql", "tic_out.sql"))
     packed = "\n  UNION ALL\n  ".join(
         world.pack_select(kind, f"{kind}_out", tic="tic" if kind == "P" else "ntic")
         for kind in KINDS)
@@ -110,7 +119,7 @@ def _recorded(world, where):
 def step_all(spark, run, tics, run_dir):
     """Every recorded tic t < tics advanced one tic, each from CedarDB's state."""
     world = _world(run_dir)
-    sql = (f"WITH prev AS (\n  {_recorded(world, f'tic < {tics}')}\n),\n"
+    sql = (f"WITH RECURSIVE prev AS (\n  {_recorded(world, f'tic < {tics}')}\n),\n"
            + _step_sql(world) + "\nSELECT * FROM step")
     return _fetch(spark, expand(sql, _params(run)))
 
@@ -122,7 +131,7 @@ def simulate(spark, run, tics, run_dir):
   {_recorded(world, "tic = 0")}
   UNION ALL
   SELECT * FROM (
-    WITH prev AS (SELECT * FROM world),
+    WITH RECURSIVE prev AS (SELECT * FROM world),
 {_step_sql(world)}
     SELECT * FROM step
   ) s
