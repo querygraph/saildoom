@@ -25,8 +25,13 @@ done
 mkdir -p "$WORK"
 
 echo "== Python 3.12 and .venv"
-uv python install 3.12 >/dev/null
-PYTHON=$(uv python find 3.12)
+# The machine's own architecture: Sail links this Python's libpython, and uv
+# may also have, say, an x86_64 build installed on an arm64 Mac.
+case "$(uname -s)" in Darwin) OS=macos ;; Linux) OS=linux ;; *) OS=$(uname -s | tr A-Z a-z) ;; esac
+case "$(uname -m)" in arm64|aarch64) ARCH=aarch64 ;; *) ARCH=$(uname -m) ;; esac
+REQUEST=cpython-3.12-$OS-$ARCH
+uv python install "$REQUEST" >/dev/null
+PYTHON=$(uv python find "$REQUEST")
 PYTHON_HOME=$("$PYTHON" -c 'import sys; print(sys.base_prefix)')
 uv venv --allow-existing --python "$PYTHON" "$ROOT/.venv" >/dev/null
 uv pip install --quiet --python "$ROOT/.venv/bin/python" -r "$ROOT/requirements.txt"
