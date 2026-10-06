@@ -72,6 +72,11 @@ def main():
                     help="press through the menus into E1M1, then walk and fire (for --headless tests)")
     args = ap.parse_args()
 
+    # The game thread waits on the server many times a tic; each time it may
+    # then wait for the interpreter while another thread (the Spark Connect
+    # client releases finished executions in the background) holds it, up to
+    # the switch interval (5 ms by default).
+    sys.setswitchinterval(float(os.environ.get("SAILDOOM_SWITCH_INTERVAL", "0.0005")))
     if args.headless:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_AUDIODRIVER"] = "dummy"
@@ -94,6 +99,8 @@ def main():
     seconds = Counter()
     call = backend.call
 
+    finished = {"doom_game_tic": [], "doom_render_frame_folded": []}
+
     def timed(name, params):
         started = time.perf_counter()
         try:
@@ -101,7 +108,30 @@ def main():
         finally:
             calls[name] += 1
             seconds[name] += time.perf_counter() - started
+            if name in finished:
+                finished[name].append(time.perf_counter())
     backend.call = timed
+
+    if os.environ.get("SAILDOOM_LOCK_TIMING"):
+        # Who waits on the backend lock, and for how long.
+        waits, holds = Counter(), Counter()
+        inner = backend.lock
+
+        class TimedLock:
+            def __enter__(self):
+                t = time.perf_counter()
+                inner.acquire()
+                self.t = time.perf_counter()
+                waits[threading.current_thread().name] += self.t - t
+                return self
+
+            def __exit__(self, *exc):
+                holds[threading.current_thread().name] += time.perf_counter() - self.t
+                inner.release()
+
+        backend.lock = TimedLock()
+        import atexit
+        atexit.register(lambda: print("lock waits", dict(waits), "holds", dict(holds)))
 
     if args.seconds:
         def stop():
@@ -116,6 +146,11 @@ def main():
     try:
         doom_client.main()
     finally:
+        # Steady play: the last 20 seconds, after any level start's planning.
+        for name, times in finished.items():
+            if times:
+                recent = [t for t in times if t >= times[-1] - 20]
+                print(f"{name}: {len(recent) / 20:.1f} a second over the last 20 s")
         print("\nstatement                         calls   mean ms")
         for name, n in calls.most_common():
             print(f"{name:32s} {n:6d} {1000 * seconds[name] / n:9.1f}")

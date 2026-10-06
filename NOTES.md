@@ -151,14 +151,15 @@ Sail and compares call by call.
 
 `scripts/play.py` runs SQLDoom's own client unchanged on the API backend
 (`saildoom/pgshim.py` stands in for psycopg2): title screen, menus, a new
-game, walking and firing. It plays at about 8 tics a second, with about 2.5
-frames a second on screen (the client draws once per pass of its loop, and
-runs up to four tics a pass). On 2026-10-05 it began at 7 s a tic.
+game, walking and firing. In steady play it runs **17 tics a second with
+about 5 frames a second** on screen (the client draws once per pass of its
+loop and runs up to four tics a pass); Doom runs 35. On 2026-10-05 it began
+at 7 s a tic. A level's first tic plans the tic query (about 5 s).
 
-| | Before | Planned once | In the client |
+| | Before | Run alone | In the client |
 |---|---|---|---|
-| A tic | 7 s | 0.09 s | 0.13 s |
-| A frame | 0.9 s | 0.09 s | 0.13 s |
+| A tic | 7 s | 0.055 s | 0.060 s |
+| A frame | 0.9 s | 0.09 s | 0.11 s |
 
 The menus, automap and campaign traces replay exactly after every change
 below, and a frame from a kept plan is byte for byte the frame the
@@ -212,33 +213,34 @@ Step by step, a cached tic, run alone:
 | Client queries from Arrow, unchanged tables left alone | 0.10 s | four small queries a tic planned on Sail (67 ms in the client) |
 | Only changed kinds returned, key hashed | 0.09 s | 6.8 MB of null struct columns a tic (now 0.5 MB) |
 
+| The cached plan's output-bytes metric made cheap (vendored DataFusion) | 0.061 s | converting every struct column to `ArrayData` in every operator, every batch |
+| Slots uploaded from Arrow, writes split by map and in the background | 0.058 s | the server reading back files just written; rewriting 141,000 `render_segs` rows of other maps |
+| Definition tables as slots | 0.055 s | reading 25 definition tables' files on every run |
+
 A frame: 0.83 s single, 0.17 s on a kept plan, 0.09 s with four partitions.
+In the client a tic and a frame contend on the server (a tic 0.055 s alone,
+0.060 s with frames); moving the renderer to a process of its own
+(`RenderProcess`) did not change that, so it is not the Python interpreter.
 
 ### Where the time is now
 
-A tic, run alone (0.09 s): about 40 ms executing the plan, spread over
-hundreds of operators (hash-join builds, projections, the shared CTEs' tasks)
-with no single hot spot; about 27 ms refreshing slots (some eight small
-requests, each planned); about 20 ms of Python. In the client, tics and
-frames slow each other by about 40%: the game and the render worker share
-the client's Python process and the server.
+A tic in the client (0.060 s): about 35 ms running the plan (hundreds of
+small operators: hash-join builds, projections, the shared CTEs' tasks, no
+single hot spot); about 14 ms refreshing slots (some seven kinds change on
+nearly every tic: the player, monster AI, Things, weapons, commands, monster
+steps, movers; the fills go concurrently); about 10 ms of Python.
 
 ### Next
 
-- **The render worker in a process of its own**, so frames and tics stop
-  contending for one Python interpreter. Target: 15 to 20 tics a second.
 - **Optional: the world kept inside Sail between tics** (plan step 3, the
-  rest of it). The tic's result would fill the next tic's slots on the server,
-  instead of the client writing the changed tables and the server reading
-  them back (about 27 ms of slot refreshes a tic). The client still needs the
-  rows for the renderer and the other statements, so it saves the refreshes,
-  not the writes.
+  rest of it). The tic's result would fill the next tic's slots on the
+  server instead of the client uploading the changed kinds (about 14 ms a
+  tic). The client still needs the rows for the renderer and the other
+  statements.
 - **Not planned: the game loop as one never-ending recursive query** (plan
-  step 5). A recursive iteration costs about what a cached tic now does; it
-  would save little beyond step 3.
+  step 5). A recursive iteration costs about what a cached tic now does.
 - **35 tics a second** needs the plan's execution well under 30 ms: engine
-  work on running small, very wide plans, with no single hot spot to start
-  from.
+  work on running small, very wide plans.
 
 ## Not done yet
 
@@ -251,7 +253,7 @@ the client's Python process and the server.
   player with the wrong flat (17,443 pixels); it does so from CedarDB's own
   recorded state too, so it is the renderer, not the game. The other 49
   differing frames are libm last bits as before.
-- Real-time play. SQLDoom's client plays on Sail at about 8 tics a second
+- Real-time play. SQLDoom's client plays on Sail at about 17 tics a second
   against Doom's 35 (see above).
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)
@@ -287,6 +289,8 @@ shared result is collected first and replayed as one partition.
 `scripts/bench_tpcds_cte.py` runs the comparison.
 
 Later commits add plan reuse (slot views, the plan cache, a target partition
-count for cached plans; see "Playing SQLDoom's client on Sail") and vendor
-datafusion-common 55.1.0 with cheap equality for nested scalars until
-DataFusion releases it ([apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066)).
+count for cached plans; see "Playing SQLDoom's client on Sail") and vendor two
+DataFusion 55.1.0 crates: datafusion-common with cheap equality for nested
+scalars until DataFusion releases it
+([apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066)),
+and datafusion-physical-expr-common with a cheap output-bytes metric.

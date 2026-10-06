@@ -9,6 +9,7 @@ sql/tic_staging.sql's outputs added, and every table's next version is the
 other maps' rows plus this tic's."""
 
 import os
+import time
 from pathlib import Path
 
 from .. import game
@@ -63,9 +64,15 @@ def register(b):
                              attack_held, weapon_switch_to, use_requested
                       FROM parquet.`{s.paths["game_tic_commands"]}`
                       WHERE map_id = {map_id} AND player_thing_id = {player}"""
+        t0 = time.perf_counter()
         out = eng.run(map_id, player, skill, cmd_sql, b.sequence("sound_events") + 1)
+        t1 = time.perf_counter()
         tic_engine.write_kinds(s, eng.world, out, map_id, player, eng.written)
+        t2 = time.perf_counter()
         attempts, sound_ran = tic_engine.tic_results(s, map_id, player)
+        if os.environ.get("SAILDOOM_TIC_TIMING"):
+            print(f"tic handler: engine {t1 - t0:.3f}s, write {t2 - t1:.3f}s, "
+                  f"results {time.perf_counter() - t2:.3f}s", flush=True)
         if attempts:
             b.set_sequence("sound_events", b.sequence("sound_events") + int(attempts))
         return sound_ran
@@ -113,6 +120,14 @@ def register(b):
 
     @b.handler("doom_game_tic")
     def game_tic(map_id, player, skill, fwd, strafe, running, turn, attack, switch, use):
+        started = time.perf_counter()
+        try:
+            return game_tic_inner(map_id, player, skill, fwd, strafe, running, turn, attack, switch, use)
+        finally:
+            if os.environ.get("SAILDOOM_TIC_TIMING"):
+                print(f"tic total {time.perf_counter() - started:.3f}s", flush=True)
+
+    def game_tic_inner(map_id, player, skill, fwd, strafe, running, turn, attack, switch, use):
         bit = 1 if skill <= 1 else 2 if skill == 2 else 4
         # 08_cs_begin's upsert of the command row, in Arrow: the floats are
         # the reals CedarDB stores for the client's literals (cedar_real).
@@ -135,7 +150,7 @@ def register(b):
         return [(due,)]
 
     def demo(map_id, player):
-        st = s.query("SELECT demo_playing, demo_recording, demo_tic, attract_step FROM screen_state WHERE id = 0")[0]
+        st = next(r for r in client_queries.rows(s, "screen_state") if r["id"] == 0)
         playing, recording, dtic = st["demo_playing"], st["demo_recording"], st["demo_tic"]
         if playing is not None:
             have = bool(s.query(f"SELECT 1 FROM demo_tics WHERE demo_id = {playing} AND tic = {dtic}"))

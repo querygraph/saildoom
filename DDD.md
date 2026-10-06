@@ -77,6 +77,14 @@ datafusion-common, and plan reuse (slot views, plan cache, target partitions).
   48 ms at 1).
 - **A cross join emits one batch per row of its left input**: `big CROSS JOIN
   one_row` produced 164,700 one-row batches. Put the one-row input first.
+- **A view over a file is read again by every run**, also of a cached plan:
+  with `cache()` a no-op there is no way to keep a table in memory short of
+  the fork's slots. The tic read 25 definition tables' Parquet files every
+  tic until they became slots (34 ms to 30 ms a run).
+- **Two sessions running small plans slow each other on the server**: the
+  tic runs in 55 ms alone and about 60 ms while another session renders,
+  whether the renderer's client is in the same Python process or not, and
+  whatever the renderer's partition count.
 - **A Spark Connect round trip costs about 2 to 4 ms** even for a trivial
   `createOrReplaceTempView`; independent ones can be sent concurrently.
 
@@ -92,6 +100,9 @@ datafusion-common, and plan reuse (slot views, plan cache, target partitions).
   filtered out).
 - Arrow nullability flags reach the physical schema: a table read from a file
   and one built from a query result differ only in them.
+- Uploading a few thousand rows as a local relation (`createDataFrame` of an
+  Arrow table) is faster than having the server read the same rows from a
+  Parquet file just written: 4.5 ms against 11.8 ms for E1M1's `render_segs`.
 - Running a PySpark Connect script with `python -c` exits early (doctest
   detection); scripts must be files or heredocs. A scratch script named after
   a stdlib module (`concurrent.py`) deadlocked the client.
@@ -113,6 +124,21 @@ datafusion-common, and plan reuse (slot views, plan cache, target partitions).
   pushdown) replace projections' children repeatedly.
 - **A recursive query's work table can be read once per iteration**; the fork
   shares it between references (`SharedCteWorkTable`).
+- **Every operator measures every output batch's memory** for its
+  `output_bytes` metric (`BaselineMetrics::record_poll` calls
+  `get_record_batch_memory_size`), which converts each column, and each child
+  of a nested column, to `ArrayData` and hashes every buffer's address. For
+  the tic's wide struct columns this was about 12% of running the cached plan.
+  The fork vendors datafusion-physical-expr-common with the metric summed from
+  `get_array_memory_size` instead.
+- **A constant list indexed by a column is broadcast to every row of every
+  batch**: `element_at(array(<256 literals>), i)` (SQLDoom's random number
+  table) expands the list with `ScalarValue::to_array_of_size` per batch, for
+  the lookup and again for Sail's bounds check (`array_length`): about 5% of
+  running the tic, 27 uses.
+- **A shared CTE's reset clears state that every copy of the plan shares**
+  (the fork's `WithSharedCtesExec`), so the next run's reset cannot be
+  prepared while the current run is going.
 - **`HashJoinExec` builds its hash table again on every execution** (as it
   must after a reset); with hundreds of joins over small inputs this is a
   visible share of running a cached plan.

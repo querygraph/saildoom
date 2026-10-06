@@ -255,3 +255,19 @@ def render(spark, sql_text, map_id, player, skill, pose, meta=None):
     out[:, 1] = (rgb >> 8) & 255
     out[:, 2] = rgb & 255
     return out.tobytes()
+
+
+def upload(spark, rows):
+    """A DataFrame of an Arrow table's rows, sent with the request. An empty
+    table gives Spark nothing to infer a schema from, so it is passed."""
+    # Every field nullable: a table read from a file and one built from a
+    # result differ only in these flags, and a slot whose schema changes is a
+    # new slot, which clears the server's plan cache.
+    rows = rows.cast(pa.schema([f.with_nullable(True) for f in rows.schema]))
+    if rows.num_rows:
+        return spark.createDataFrame(rows)
+    # An empty table goes the same way, as one row of nulls filtered out: an
+    # empty DataFrame built from a Spark schema maps to other physical types,
+    # and a slot that alternates between the two is replaced every time.
+    nulls = pa.table({f.name: pa.nulls(1, f.type) for f in rows.schema}, schema=rows.schema)
+    return spark.createDataFrame(nulls).where("FALSE")

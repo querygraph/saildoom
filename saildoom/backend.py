@@ -19,8 +19,10 @@ the level flow, the game tic, saves, demos, the automap, sound, deathmatch).
 
 import contextlib
 import json
+import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 import pyarrow as pa
@@ -37,6 +39,9 @@ class Store:
     def __init__(self, spark, root, initial):
         self.spark = spark
         self.dirty = set()
+        self.counters = {}
+        self.pending = {}  # version directory -> futures of its background writes
+        self.splits = {}  # name -> (path, part, rest file, rest rows) of a write_split version
         self.batching = self.unsaved = False
         self.held = {}  # name -> (path, table) for tables written from Arrow
         self.root = Path(root)
@@ -68,6 +73,7 @@ class Store:
                 self._save()
 
     def _register(self, name):
+        self.wait(self.paths[name])
         self.spark.read.parquet(self.paths[name]).createOrReplaceTempView(name)
         self.dirty.discard(name)
 
@@ -85,9 +91,7 @@ class Store:
 
     def write(self, name, sql, params=None):
         """The next version of `name` is the result of `sql`."""
-        versions = self.root / name
-        n = len(list(versions.glob("v*"))) if versions.exists() else 0
-        path = versions / f"v{n:06d}"
+        path = self._next_version(name)
         query = expand(strip_comments(sql), params or {})
         self._flush(query)
         df = self.spark.sql(query)
@@ -101,15 +105,82 @@ class Store:
         self._save()
 
     def write_arrow(self, name, table):
-        versions = self.root / name
-        versions.mkdir(parents=True, exist_ok=True)
-        n = len(list(versions.glob("v*")))
-        path = versions / f"v{n:06d}.parquet"
+        path = self._next_version(name, ".parquet")
         pq.write_table(table, path)
         self.paths[name] = str(path)
         self.held[name] = (str(path), table)
         self.dirty.add(name)
         self._save()
+
+    def _next_version(self, name, suffix=""):
+        """The path of `name`'s next version. Counted once per table, then in
+        memory: a directory listing per write grows with every tic."""
+        versions = self.root / name
+        if name not in self.counters:
+            versions.mkdir(parents=True, exist_ok=True)
+            self.counters[name] = len(list(versions.glob("v*")))
+        n = self.counters[name]
+        self.counters[name] = n + 1
+        return versions / f"v{n:06d}{suffix}"
+
+    def write_splits(self, writes):
+        """New versions of tables that one map's rows (`part`, a key such as
+        (map_id,)) replace: each version is a directory of rest.parquet, the
+        other rows, and part.parquet. When the table's current version was
+        written this way for the same part, its rest.parquet is linked into
+        the new version rather than rewritten -- render_segs holds 141,000
+        rows across the WAD's maps and 2,057 of one. `writes` is
+        [(name, part, rows, rest)], `rest` a function returning the other
+        rows when they must be written. Returns the new paths."""
+        from concurrent.futures import ThreadPoolExecutor
+        if not hasattr(self, "pool"):
+            self.pool = ThreadPoolExecutor(max_workers=8)
+        jobs = []
+        for name, part, rows, rest in writes:
+            path = self._next_version(name)
+            path.mkdir(parents=True)
+            split = self.splits.get(name)
+            if split is not None and split[0] == self.paths[name] and split[1] == part:
+                rest_file, rest_rows = split[2], split[3]
+                os.link(rest_file, path / "rest.parquet")
+            else:
+                rest_rows = rest()
+                jobs.append((rest_rows, path / "rest.parquet"))
+            jobs.append((rows, path / "part.parquet"))
+            self.splits[name] = (str(path), part, str(path / "rest.parquet"), rest_rows)
+            self.paths[name] = str(path)
+            self.held[name] = (str(path), pa.concat_tables([rest_rows, rows]))
+            self.dirty.add(name)
+        # The files are written in the background: readers in this process use
+        # the held tables, and a Sail read of a path waits for it (wait()).
+        for rows, file in jobs:
+            self.pending.setdefault(str(file.parent), []).append(self.pool.submit(pq.write_table, rows, file))
+        self._save()
+        return [self.paths[name] for name, *_ in writes]
+
+    def wait(self, path=None):
+        """Until the files of `path` (every pending path if None) are written."""
+        keys = list(self.pending) if path is None else [str(path)]
+        for key in keys:
+            for future in self.pending.pop(key, []):
+                future.result()
+
+    def write_arrows(self, tables):
+        """write_arrow for several tables at once, the files written in
+        parallel; returns their new paths."""
+        from concurrent.futures import ThreadPoolExecutor
+        targets = []
+        for name, table in tables:
+            targets.append((name, table, self._next_version(name, ".parquet")))
+        if not hasattr(self, "pool"):
+            self.pool = ThreadPoolExecutor(max_workers=8)
+        list(self.pool.map(lambda t: pq.write_table(t[1], t[2]), targets))
+        for name, table, path in targets:
+            self.paths[name] = str(path)
+            self.held[name] = (str(path), table)
+            self.dirty.add(name)
+        self._save()
+        return [str(path) for _, _, path in targets]
 
     def arrow_schema(self, name):
         p = Path(self.paths[name])
@@ -173,10 +244,15 @@ class Backend:
                 cols.append(f"t.{f.name}")
         self.store.write(table, f"SELECT {', '.join(cols)} FROM {table} t {joins}")
 
+    def _sequences(self):
+        if getattr(self, "seq_values", None) is None:
+            seqs = self.store.root / "sequences.json"
+            self.seq_values = json.loads(seqs.read_text()) if seqs.exists() else {}
+        return self.seq_values
+
     def sequence(self, table):
         """The last value of a table's serial column (CedarDB's sequence)."""
-        seqs = self.store.root / "sequences.json"
-        values = json.loads(seqs.read_text()) if seqs.exists() else {}
+        values = self._sequences()
         if table not in values:
             initial = self.store.paths.get("_sequences")
             if initial:
@@ -185,14 +261,13 @@ class Backend:
             else:
                 m = self.store.query(f"SELECT MAX(event_id) AS m FROM {table}")[0]["m"]
                 values[table] = int(m or 0)
-            seqs.write_text(json.dumps(values))
+            (self.store.root / "sequences.json").write_text(json.dumps(values))
         return values[table]
 
     def set_sequence(self, table, value):
-        seqs = self.store.root / "sequences.json"
-        values = json.loads(seqs.read_text()) if seqs.exists() else {}
+        values = self._sequences()
         values[table] = int(value)
-        seqs.write_text(json.dumps(values))
+        (self.store.root / "sequences.json").write_text(json.dumps(values))
 
     def replace_rows(self, table, where, rows_sql):
         """DELETE FROM table WHERE where; INSERT the rows of rows_sql -- an
@@ -207,8 +282,12 @@ class Backend:
         fn = self.handlers.get(name)
         if fn is None:
             raise NotImplementedError(f"statement {name} is not ported to Sail")
+        t0 = time.perf_counter()
         with self.store.batch():
             rows = fn(*params)
+            t1 = time.perf_counter()
+        if os.environ.get("SAILDOOM_TIC_TIMING") and name == "doom_game_tic":
+            print(f"call: handler {t1 - t0:.4f}s, after {time.perf_counter() - t1:.4f}s", flush=True)
         return [] if rows is None else rows
 
 

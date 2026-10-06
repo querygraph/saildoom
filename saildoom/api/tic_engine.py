@@ -10,13 +10,14 @@ the map), the commands, render_segs, and tic_params for the one value folded
 into the SQL that changes (the next sound event id). The SQL text is the same
 every tic of a level, so only the first tic of a level is planned.
 
-The definition tables the tic reads are plain views. They do not change while
-a game runs; if one does, it is registered again and the cache is cleared.
+The definition tables the tic reads are slots as well, filled from their
+files once: a plain view over a file would be read again on every run.
 """
 
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pyarrow as pa
@@ -30,6 +31,8 @@ FILES = game.TIC_FILES[:-1] + ("tic_out.sql", "tic_staging.sql")
 STATIC_BY_MAP = ("linedef_geom", "node_path_steps", "nodes", "linedefs", "sector_adjacency",
                  "vertexes", "maps", "node_children", "segs", "ssectors")
 SKIP_FIELDS = ("t_x", "t_y", "t_z", "t_angle", "last_mode")
+CMD_COLUMNS = ("skill", "skill_bit", "move_fwd", "move_strafe", "running", "turn_degrees",
+               "attack_held", "weapon_switch_to", "use_requested")
 
 
 def tic_tables():
@@ -53,18 +56,31 @@ class TicEngine:
         self.static = sorted(t for t in read if t in store.paths and t not in self.kind_tables
                              and t not in STATIC_BY_MAP and t != "render_segs")
         slots = ["rec_" + t for t in sorted(self.kind_tables)] + ["cmd", "tic_params", "render_segs"]
-        slots += list(STATIC_BY_MAP)
+        slots += list(STATIC_BY_MAP) + self.static
         self.spark.conf.set("spark.sail.slotViews", ",".join(slots))
         self.spark.conf.set("spark.sail.planCache", "true")
         # A tic is a few thousand rows: one partition, no repartitioning.
         self.spark.conf.set("spark.sail.targetPartitions", os.environ.get("SAILDOOM_TIC_PARTITIONS", "1"))
+        self.pool = ThreadPoolExecutor(max_workers=8)
         self.loaded = {}
+        self.schemas = {}
         self.written = {}  # write_kinds' record of what it wrote last tic
         self.map_id = None
         self.sql = {}
 
     def _slot(self, name, sql):
+        self.fills += 1
         self.spark.sql(sql).createOrReplaceTempView(name)
+
+    def _fill(self, name, frame):
+        self.fills += 1
+        df = frame()
+        if os.environ.get("SAILDOOM_SLOT_SCHEMAS"):
+            schema = df.schema.json()
+            if self.schemas.get(name) not in (None, schema):
+                print(f"slot {name} schema changed:\n  {self.schemas[name][:300]}\n  {schema[:300]}", flush=True)
+            self.schemas[name] = schema
+        df.createOrReplaceTempView(name)
 
     def _clear_cache(self):
         self.spark.conf.set("spark.sail.planCache", "false")
@@ -73,32 +89,46 @@ class TicEngine:
 
     def _refresh(self, map_id, player, cmd_sql, se_next):
         s = self.store
-        changed_static = False
-        for name in self.static:
-            if self.loaded.get(name) != s.paths[name]:
-                self.spark.read.parquet(s.paths[name]).createOrReplaceTempView(name)
-                changed_static = changed_static or name in self.loaded
-                self.loaded[name] = s.paths[name]
-        if changed_static:
-            self._clear_cache()
+        # The definition tables are slots too: read from their files once, then
+        # served from memory on every run (a plain view over a file is read
+        # again by every run of the kept plan).
+        static = [(name, s.paths[name]) for name in self.static if self.loaded.get(name) != s.paths[name]]
+        list(self.pool.map(lambda f: self._slot(f[0], f"SELECT * FROM parquet.`{f[1]}`"), static))
+        for name, path in static:
+            self.loaded[name] = path
         if map_id != self.map_id:
             for name in STATIC_BY_MAP:
                 self._slot(name, f"SELECT * FROM parquet.`{s.paths[name]}` WHERE map_id = {map_id}")
             self.map_id = map_id
             for name in [n for n in self.loaded if n.startswith("rec_") or n == "render_segs"]:
                 del self.loaded[name]
-        views = [("rec_" + t, t, "0 AS tic, *") for t in self.kind_tables] + [("render_segs", "render_segs", "*")]
-        for name, table, cols in views:
+        views = [("rec_" + t, t, True) for t in self.kind_tables] + [("render_segs", "render_segs", False)]
+        # The player's command row, uploaded from the table the store holds
+        # (cmd_sql reads the same row from its file).
+        cmd = s.arrow("game_tic_commands")
+        cmd = cmd.filter(pc.and_(pc.equal(cmd["map_id"], map_id), pc.equal(cmd["player_thing_id"], player)))
+        cmd = cmd.select(list(CMD_COLUMNS))
+        fills = [("cmd", lambda: engine.upload(self.spark, cmd).selectExpr("1 AS tic", *CMD_COLUMNS)),
+                 ("tic_params", lambda: self.spark.sql(f"SELECT CAST({int(se_next)} AS BIGINT) AS se_next"))]
+        for name, table, with_tic in views:
             key = (s.paths[table], map_id)
             if self.loaded.get(name) != key:
-                self._slot(name, f"SELECT {cols} FROM parquet.`{s.paths[table]}` WHERE map_id = {map_id}")
+                # The map's rows, uploaded from the table the store holds:
+                # faster than the server reading back the file just written.
+                rows = s.arrow(table)
+                rows = rows.filter(pc.equal(rows["map_id"], map_id))
+                fills.append((name, lambda rows=rows, with_tic=with_tic: (
+                    engine.upload(self.spark, rows).selectExpr("0 AS tic", "*") if with_tic
+                    else engine.upload(self.spark, rows))))
                 self.loaded[name] = key
-        self._slot("cmd", cmd_sql)
-        self._slot("tic_params", f"SELECT CAST({int(se_next)} AS BIGINT) AS se_next")
+        # Each fill is a round trip that the server plans and runs on its own;
+        # they are independent, so they go at once.
+        list(self.pool.map(lambda f: self._fill(*f), fills))
 
     def run(self, map_id, player, skill, cmd_sql, se_next):
         """One tic: the world rows of the next tic, as an Arrow table."""
         started = time.perf_counter()
+        self.fills = 0
         self._refresh(map_id, player, cmd_sql, se_next)
         refreshed = time.perf_counter()
         key = (map_id, player, skill)
@@ -117,7 +147,7 @@ class TicEngine:
         sent = time.perf_counter()
         out = df.toArrow()
         if os.environ.get("SAILDOOM_TIC_TIMING"):
-            print(f"tic engine: refresh {refreshed - started:.3f}s, sql {sent - refreshed:.3f}s, "
+            print(f"tic engine: {self.fills} fills, refresh {refreshed - started:.3f}s, sql {sent - refreshed:.3f}s, "
                   f"run {time.perf_counter() - sent:.3f}s", flush=True)
         return out
 
@@ -150,7 +180,10 @@ def write_kinds(store, world, out, map_id, player, last):
     player) and this tic's rows of the kind, in the types the tic computed.
     A table is left as it is when its rows are the ones this function wrote
     last tic and nothing else has written it since (`last`: kind -> (path,
-    rows)); its slot then needs no refresh either."""
+    rows)); its slot then needs no refresh either. The other maps' rows are
+    carried over from the last version without being rewritten
+    (Store.write_split)."""
+    writes = []
     markers = out.filter(pc.equal(out["tic"], -1))
     changed = set(markers["kind"].to_pylist())
     out = out.filter(pc.not_equal(out["tic"], -1))
@@ -160,22 +193,28 @@ def write_kinds(store, world, out, map_id, player, last):
         names = [n for n, _ in world.fields[kind] if n not in SKIP_FIELDS]
         rows = out.filter(pc.equal(out["kind"], kind)).column(col)
         rows = rows.combine_chunks() if isinstance(rows, pa.ChunkedArray) else rows
-        new = pa.table({n: rows.field(n) for n in names}) if len(rows) else None
+        schema = pa.schema([pa.field(n, rows.type.field(n).type) for n in names])
+        new = pa.table({n: rows.field(n) for n in names}) if len(rows) else schema.empty_table()
         before = last.get(kind)
-        if (before is not None and before[0] == store.paths[table]
-                and (before[1] is None) == (new is None) and (new is None or new.equals(before[1]))):
+        if before is not None and before[0] == store.paths[table] and new.equals(before[1]):
             continue
-        old = store.arrow(table).select(names)
-        if kind == "P":
-            keep = pc.invert(pc.and_(pc.equal(old["map_id"], map_id), pc.equal(old["player_thing_id"], player)))
-        else:
-            keep = pc.not_equal(old["map_id"], map_id)
-        old = old.filter(keep)
-        schema = new.schema if new is not None else pa.schema(
-            [pa.field(n, rows.type.field(n).type) for n in names])
-        old = old.cast(schema)
-        store.write_arrow(table, pa.concat_tables([old, new]) if new is not None else old)
-        last[kind] = (store.paths[table], new)
+        part = (map_id, player) if kind == "P" else (map_id,)
+
+        def rest(table=table, names=names, kind=kind, schema=schema):
+            old = store.arrow(table).select(names)
+            if kind == "P":
+                keep = pc.invert(pc.and_(pc.equal(old["map_id"], map_id),
+                                         pc.equal(old["player_thing_id"], player)))
+            else:
+                keep = pc.not_equal(old["map_id"], map_id)
+            return old.filter(keep).cast(schema)
+        writes.append((kind, table, part, new, rest))
+    if os.environ.get("SAILDOOM_TIC_TIMING"):
+        print(f"tic writes: {len(writes)} tables, {sum(w[3].num_rows for w in writes)} rows, "
+              f"{len(changed)} kinds changed: {' '.join(sorted(changed))}", flush=True)
+    paths = store.write_splits([(t, part, new, rest) for _, t, part, new, rest in writes])
+    for (kind, _, _, new, _), path in zip(writes, paths):
+        last[kind] = (path, new)
 
 
 def tic_results(store, map_id, player):
