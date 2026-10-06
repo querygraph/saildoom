@@ -15,6 +15,7 @@ work goes on; [NOTES.md](NOTES.md) has the measurements in context.
 | [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | Wrong rows: `eliminate_cross_join` with `extract_equijoin_predicate` drops an equi-join key whose one side spans two cross-joined relations. Reproduced on Sail main and DataFusion main 8248a57969. | Issue, open. The game writes one branch per respawn fog instead. |
 | [apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065) | Physical planning is slow, and grows faster than the query, with many typed NULL struct literals: `ScalarValue::eq` compares nested values through arrow's `ArrayData` conversion, and `EquivalenceGroup::add_constant` compares each new constant with every class. | Issue, open. |
 | [apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066) | The fix for #26065: compare lengths and data types (and pointer identity) before arrow's array equality. 35 struct columns x 20 fields: 862 ms to 147 ms. | PR, open. Vendored in the fork. |
+| [apache/datafusion#26071](https://github.com/apache/datafusion/issues/26071) | Every operator's `BaselineMetrics` computes `output_bytes` for every batch with `get_record_batch_memory_size`, which converts each column and nested child to `ArrayData` and hashes every buffer: 15-22 µs a batch for 35 struct columns against 1.5 µs for summing `get_array_memory_size`; about 12% of running SailDoom's cached tic. | Issue, open. The fork vendors datafusion-physical-expr-common with the sum. |
 
 Fork commits (querygraph/sail `work/recursive-cte`): recursive CTEs, shared
 CTEs, the fixes the game found (CTE inlining of work-table readers, shared CTE
@@ -130,7 +131,8 @@ datafusion-common, and plan reuse (slot views, plan cache, target partitions).
   of a nested column, to `ArrayData` and hashes every buffer's address. For
   the tic's wide struct columns this was about 12% of running the cached plan.
   The fork vendors datafusion-physical-expr-common with the metric summed from
-  `get_array_memory_size` instead.
+  `get_array_memory_size` instead
+  ([apache/datafusion#26071](https://github.com/apache/datafusion/issues/26071)).
 - **A constant list indexed by a column is broadcast to every row of every
   batch**: `element_at(array(<256 literals>), i)` (SQLDoom's random number
   table) expands the list with `ScalarValue::to_array_of_size` per batch, for
