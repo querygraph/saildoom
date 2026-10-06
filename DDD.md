@@ -20,7 +20,9 @@ work goes on; [NOTES.md](NOTES.md) has the measurements in context.
 Fork commits (querygraph/sail `work/recursive-cte`): recursive CTEs, shared
 CTEs, the fixes the game found (CTE inlining of work-table readers, shared CTE
 reset ownership, aggregate dynamic filters in recursive plans), the vendored
-datafusion-common, and plan reuse (slot views, plan cache, target partitions).
+datafusion-common and datafusion-physical-expr-common, plan reuse (slot views,
+plan cache, target partitions), and result slots (a query's result, or the
+rows it computed for one of its shared CTEs, kept in a slot on the server).
 
 ## Sail
 
@@ -101,6 +103,10 @@ datafusion-common, and plan reuse (slot views, plan cache, target partitions).
   filtered out).
 - Arrow nullability flags reach the physical schema: a table read from a file
   and one built from a query result differ only in them.
+- Inside a plan, columns carry Sail's internal ids (`#19468`), not the
+  query's names: a CTE's physical rows are named that way, and only the
+  final projection renames them. The fork's result slot matches a CTE's rows
+  to a view's columns by position and type.
 - Uploading a few thousand rows as a local relation (`createDataFrame` of an
   Arrow table) is faster than having the server read the same rows from a
   Parquet file just written: 4.5 ms against 11.8 ms for E1M1's `render_segs`.

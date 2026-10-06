@@ -68,6 +68,7 @@ def register(b):
         out = eng.run(map_id, player, skill, cmd_sql, b.sequence("sound_events") + 1)
         t1 = time.perf_counter()
         tic_engine.write_kinds(s, eng.world, out, map_id, player, eng.written)
+        eng.tic_written()
         t2 = time.perf_counter()
         attempts, sound_ran = tic_engine.tic_results(s, map_id, player)
         if os.environ.get("SAILDOOM_TIC_TIMING"):

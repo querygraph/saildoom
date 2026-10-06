@@ -151,14 +151,14 @@ Sail and compares call by call.
 
 `scripts/play.py` runs SQLDoom's own client unchanged on the API backend
 (`saildoom/pgshim.py` stands in for psycopg2): title screen, menus, a new
-game, walking and firing. In steady play it runs **17 tics a second with
-about 5 frames a second** on screen (the client draws once per pass of its
+game, walking and firing. In steady play it runs **21.6 tics a second with
+about 6 frames a second** on screen (the client draws once per pass of its
 loop and runs up to four tics a pass); Doom runs 35. On 2026-10-05 it began
 at 7 s a tic. A level's first tic plans the tic query (about 5 s).
 
 | | Before | Run alone | In the client |
 |---|---|---|---|
-| A tic | 7 s | 0.055 s | 0.060 s |
+| A tic | 7 s | 0.045 s | 0.046 s |
 | A frame | 0.9 s | 0.09 s | 0.11 s |
 
 The menus, automap and campaign traces replay exactly after every change
@@ -216,31 +216,37 @@ Step by step, a cached tic, run alone:
 | The cached plan's output-bytes metric made cheap (vendored DataFusion) | 0.061 s | converting every struct column to `ArrayData` in every operator, every batch |
 | Slots uploaded from Arrow, writes split by map and in the background | 0.058 s | the server reading back files just written; rewriting 141,000 `render_segs` rows of other maps |
 | Definition tables as slots | 0.055 s | reading 25 definition tables' files on every run |
+| The world kept in Sail between tics | 0.045 s | uploading the changed kinds back to the server every tic (about 8 fills, now 3) |
 
 A frame: 0.83 s single, 0.17 s on a kept plan, 0.09 s with four partitions.
 In the client a tic and a frame contend on the server (a tic 0.055 s alone,
 0.060 s with frames); moving the renderer to a process of its own
 (`RenderProcess`) did not change that, so it is not the Python interpreter.
 
+### The world kept in Sail
+
+The tic reads the previous world from the slot `world` and returns only the
+changed kinds' rows; the fork keeps the rows the query computed for its
+shared CTE `step`, the whole next world, in `world` (a query starting with
+`/* sail.result_slot=world:step */`). Each tic uploads only its inputs: the
+command, the command table's rows (written by the client before the tic) and
+the next sound event id. The player's row is rebuilt as the tables would give
+it (its Thing's position, no movement mode). When anything other than the tic
+has written a world table (a cheat, a menu, a load, a new level), the slots
+are filled from the tables and packed into `world` again.
+
 ### Where the time is now
 
-A tic in the client (0.060 s): about 35 ms running the plan (hundreds of
+A tic, run alone (0.045 s): about 30 to 35 ms running the plan (hundreds of
 small operators: hash-join builds, projections, the shared CTEs' tasks, no
-single hot spot); about 14 ms refreshing slots (some seven kinds change on
-nearly every tic: the player, monster AI, Things, weapons, commands, monster
-steps, movers; the fills go concurrently); about 10 ms of Python.
+single hot spot); 3 to 4 ms of slot fills; about 8 ms of Python.
 
 ### Next
 
-- **Optional: the world kept inside Sail between tics** (plan step 3, the
-  rest of it). The tic's result would fill the next tic's slots on the
-  server instead of the client uploading the changed kinds (about 14 ms a
-  tic). The client still needs the rows for the renderer and the other
-  statements.
+- **Faster tic execution**: profiling the cached plan's run.
 - **Not planned: the game loop as one never-ending recursive query** (plan
   step 5). A recursive iteration costs about what a cached tic now does.
-- **35 tics a second** needs the plan's execution well under 30 ms: engine
-  work on running small, very wide plans.
+- **35 tics a second** needs the plan's execution well under 30 ms.
 
 ## Not done yet
 
@@ -253,7 +259,7 @@ steps, movers; the fills go concurrently); about 10 ms of Python.
   player with the wrong flat (17,443 pixels); it does so from CedarDB's own
   recorded state too, so it is the renderer, not the game. The other 49
   differing frames are libm last bits as before.
-- Real-time play. SQLDoom's client plays on Sail at about 17 tics a second
+- Real-time play. SQLDoom's client plays on Sail at about 21.6 tics a second
   against Doom's 35 (see above).
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)

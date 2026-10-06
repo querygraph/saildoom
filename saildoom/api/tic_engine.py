@@ -56,7 +56,7 @@ class TicEngine:
         self.static = sorted(t for t in read if t in store.paths and t not in self.kind_tables
                              and t not in STATIC_BY_MAP and t != "render_segs")
         slots = ["rec_" + t for t in sorted(self.kind_tables)] + ["cmd", "tic_params", "render_segs"]
-        slots += list(STATIC_BY_MAP) + self.static
+        slots += list(STATIC_BY_MAP) + self.static + ["world"]
         self.spark.conf.set("spark.sail.slotViews", ",".join(slots))
         self.spark.conf.set("spark.sail.planCache", "true")
         # A tic is a few thousand rows: one partition, no repartitioning.
@@ -67,6 +67,13 @@ class TicEngine:
         self.written = {}  # write_kinds' record of what it wrote last tic
         self.map_id = None
         self.sql = {}
+        # The world kept in Sail (the slot `world`): valid for `world_key`
+        # while the world's tables are the ones the tic last wrote.
+        self.in_sail = os.environ.get("SAILDOOM_WORLD_IN_SAIL", "1") == "1"
+        self.world_key = None
+        self.after_write = None
+        self.packs = {}
+        self.steps = {}
 
     def _slot(self, name, sql):
         self.fills += 1
@@ -127,6 +134,8 @@ class TicEngine:
 
     def run(self, map_id, player, skill, cmd_sql, se_next):
         """One tic: the world rows of the next tic, as an Arrow table."""
+        if self.in_sail:
+            return self._run_in_sail(map_id, player, skill, se_next)
         started = time.perf_counter()
         self.fills = 0
         self._refresh(map_id, player, cmd_sql, se_next)
@@ -150,6 +159,100 @@ class TicEngine:
             print(f"tic engine: {self.fills} fills, refresh {refreshed - started:.3f}s, sql {sent - refreshed:.3f}s, "
                   f"run {time.perf_counter() - sent:.3f}s", flush=True)
         return out
+
+
+    # -- The world kept in Sail ------------------------------------------------
+    #
+    # The tic reads the previous world from the slot `world` and returns the
+    # changed kinds' rows; the server keeps the rows it computed for `step`,
+    # the whole next world, in `world` (the fork's result slot). Only the
+    # tic's inputs go up each tic. When anything else has written a world
+    # table (a cheat, a menu, a new level), the slot is packed again from the
+    # tables.
+
+    def world_is_current(self, key):
+        return (self.world_key == key and self.after_write is not None
+                and all(self.store.paths[t] == self.after_write[t] for t in self.after_write))
+
+    def tic_written(self):
+        """Called after the client has written the tic's changed kinds."""
+        self.after_write = {t: self.store.paths[t] for t in self.kind_tables if t != "game_tic_commands"}
+
+    def _run_in_sail(self, map_id, player, skill, se_next):
+        started = time.perf_counter()
+        self.fills = 0
+        key = (map_id, player, skill)
+        w = self.world
+        params = dict(game.CONSTANTS, map_id=map_id, player=player, skill=skill,
+                      se_next="(SELECT se_next FROM tic_params)")
+        if not self.world_is_current(key):
+            self._refresh(map_id, player, None, se_next)
+            pack = expand(strip_comments(
+                "SELECT * FROM (\n  " + "\n  UNION ALL\n  ".join(
+                    w.recorded_rows(k, "tic = 0") for k in w.kinds) + "\n) packed"), params)
+            if key not in self.packs:
+                # Creates the slot view, with the world's columns.
+                self.spark.sql(pack).createOrReplaceTempView("world")
+                self.packs[key] = self.spark.sql("/* sail.result_slot=world */ " + pack)
+            else:
+                self.packs[key].toArrow()
+            self.world_key = key
+        else:
+            self._refresh_inputs(map_id, player, se_next)
+        refreshed = time.perf_counter()
+        if key not in self.steps:
+            step = game._step_sql(w, FILES)
+            self.steps[key] = self.spark.sql("/* sail.result_slot=world:step */ " + expand(strip_comments(
+                f"WITH RECURSIVE prev AS (\n  {world_prev(w)}\n),\n{step},\n{changed_output(w)}"), params))
+        sent = time.perf_counter()
+        out = self.steps[key].toArrow()
+        if os.environ.get("SAILDOOM_TIC_TIMING"):
+            print(f"tic engine: {self.fills} fills, refresh {refreshed - started:.3f}s, sql 0.000s, "
+                  f"run {time.perf_counter() - sent:.3f}s", flush=True)
+        return out
+
+    def _refresh_inputs(self, map_id, player, se_next):
+        """The slots a tic reads besides the world: the command, the command
+        table's rows (the client writes them before the tic) and tic_params."""
+        s = self.store
+        cmd = s.arrow("game_tic_commands")
+        rows = cmd.filter(pc.equal(cmd["map_id"], map_id))
+        mine = cmd.filter(pc.and_(pc.equal(cmd["map_id"], map_id), pc.equal(cmd["player_thing_id"], player)))
+        mine = mine.select(list(CMD_COLUMNS))
+        fills = [("cmd", lambda: engine.upload(self.spark, mine).selectExpr("1 AS tic", *CMD_COLUMNS)),
+                 ("tic_params", lambda: self.spark.sql(f"SELECT CAST({int(se_next)} AS BIGINT) AS se_next")),
+                 ("rec_game_tic_commands", lambda: engine.upload(self.spark, rows).selectExpr("0 AS tic", "*"))]
+        self.loaded["rec_game_tic_commands"] = (s.paths["game_tic_commands"], map_id)
+        list(self.pool.map(lambda f: self._fill(*f), fills))
+
+
+def world_prev(world):
+    """`prev` read from the slot `world` (the last tic's `step`), as the
+    tables would give it: the player's row with its Thing's position and no
+    movement mode (World.recorded_rows), and the commands from their table,
+    which the client writes before every tic."""
+    cols = [col for col, _ in world.kinds.values()]
+    pcol, tcol = world.kinds["P"][0], world.kinds["T"][0]
+    others = (f"SELECT 0 AS tic, kind, {', '.join(cols)} FROM world WHERE kind NOT IN ('P', 'GC')")
+    from_thing = {"t_x": "x", "t_y": "y", "t_z": "z", "t_angle": "angle"}
+    parts = []
+    for n, t in world.fields["P"]:
+        if n in from_thing:
+            value = f"th.{tcol}.{from_thing[n]}"
+        elif n == "last_mode":
+            value = "NULL"
+        else:
+            value = f"w.{pcol}.{n}"
+        parts.append(f"'{n}', CAST({value} AS {t})")
+    player_cols = ", ".join(
+        f"named_struct({', '.join(parts)}) AS {col}" if k == "P" else f"CAST(NULL AS {world.struct_type(k)}) AS {col}"
+        for k, (col, _) in world.kinds.items())
+    player = (f"SELECT 0 AS tic, 'P' AS kind, {player_cols} FROM world w "
+              f"JOIN world th ON th.kind = 'T' AND th.{tcol}.map_id = w.{pcol}.map_id "
+              f"AND th.{tcol}.id = w.{pcol}.player_thing_id "
+              f"WHERE w.kind = 'P' AND w.{pcol}.map_id = ${{map_id}} AND w.{pcol}.player_thing_id = ${{player}}")
+    commands = world.recorded_rows("GC", "tic = 0")
+    return "\n  UNION ALL\n  ".join([others, player, commands])
 
 
 def changed_output(world):
