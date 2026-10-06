@@ -274,3 +274,10 @@ def upload(spark, rows):
     # and a slot that alternates between the two is replaced every time.
     nulls = pa.table({f.name: pa.nulls(1, f.type) for f in rows.schema}, schema=rows.schema)
     return spark.createDataFrame(nulls).where("FALSE")
+
+
+def fetch(df):
+    """A DataFrame's rows as the server sent them. PySpark's toArrow() first
+    asks the server for the schema (parsing and resolving the query again,
+    for a DataFrame it has not seen) and then casts the whole table to it."""
+    return df._to_table()[0]

@@ -74,6 +74,11 @@ class TicEngine:
         self.after_write = None
         self.packs = {}
         self.steps = {}
+        self.step_sql = {}
+        # The tic's inputs as arguments of the request that runs it, once
+        # their slot views exist (SAILDOOM_INPUT_ARGUMENTS=0: separate fills).
+        self.input_arguments = os.environ.get("SAILDOOM_INPUT_ARGUMENTS", "1") == "1"
+        self.inputs_ready = False
 
     def _slot(self, name, sql):
         self.fills += 1
@@ -197,19 +202,56 @@ class TicEngine:
             else:
                 self.packs[key].toArrow()
             self.world_key = key
-        else:
+            self.inputs_ready = False
+        elif not (self.inputs_ready and self.input_arguments):
             self._refresh_inputs(map_id, player, se_next)
+            self.inputs_ready = True
         refreshed = time.perf_counter()
         if key not in self.steps:
             step = game._step_sql(w, FILES)
-            self.steps[key] = self.spark.sql("/* sail.result_slot=world:step */ " + expand(strip_comments(
-                f"WITH RECURSIVE prev AS (\n  {world_prev(w)}\n),\n{step},\n{changed_output(w)}"), params))
+            self.step_sql[key] = "/* sail.result_slot=world:step */ " + expand(strip_comments(
+                f"WITH RECURSIVE prev AS (\n  {world_prev(w)}\n),\n{step},\n{changed_output(w)}"), params)
+            self.steps[key] = self.spark.sql(self.step_sql[key])
+            self.inputs_ready = False
         sent = time.perf_counter()
-        out = self.steps[key].toArrow()
+        if self.inputs_ready and self.input_arguments and self.world_is_current(key):
+            # The tic's inputs go with the request that runs it (the fork's
+            # `__slot_NAME` arguments): one round trip instead of two.
+            out = self._run_with_inputs(key, map_id, player, se_next)
+        else:
+            out = engine.fetch(self.steps[key])
+            self.inputs_ready = True
         if os.environ.get("SAILDOOM_TIC_TIMING"):
             print(f"tic engine: {self.fills} fills, refresh {refreshed - started:.3f}s, sql 0.000s, "
                   f"run {time.perf_counter() - sent:.3f}s", flush=True)
         return out
+
+    def _input_tables(self, map_id, player, se_next):
+        """The rows of the tic's input slots, as their fills make them."""
+        cmd = self.store.arrow("game_tic_commands")
+        rows = cmd.filter(pc.equal(cmd["map_id"], map_id))
+        mine = cmd.filter(pc.and_(pc.equal(cmd["map_id"], map_id), pc.equal(cmd["player_thing_id"], player)))
+        mine = mine.select(list(CMD_COLUMNS))
+
+        def with_tic(table, tic):
+            table = table.add_column(0, "tic", pa.array([tic] * table.num_rows, pa.int32()))
+            return pa.Table.from_arrays(table.columns, schema=pa.schema([f.with_nullable(True) for f in table.schema]))
+        return {"cmd": with_tic(mine, 1),
+                "rec_game_tic_commands": with_tic(rows, 0),
+                "tic_params": pa.table({"se_next": pa.array([int(se_next)], pa.int64())})}
+
+    def _run_with_inputs(self, key, map_id, player, se_next):
+        from pyspark.sql.connect.dataframe import DataFrame
+        from pyspark.sql.connect.plan import SQL
+        from pyspark.sql.functions import lit
+        arguments = {}
+        for name, table in self._input_tables(map_id, player, se_next).items():
+            sink = pa.BufferOutputStream()
+            with pa.ipc.new_stream(sink, table.schema) as writer:
+                writer.write_table(table)
+            arguments["__slot_" + name] = lit(sink.getvalue().to_pybytes())
+        self.loaded["rec_game_tic_commands"] = (self.store.paths["game_tic_commands"], map_id)
+        return engine.fetch(DataFrame(SQL(self.step_sql[key], named_args=arguments), self.spark))
 
     def _refresh_inputs(self, map_id, player, se_next):
         """The slots a tic reads besides the world: the command, the command

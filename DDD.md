@@ -24,6 +24,53 @@ datafusion-common and datafusion-physical-expr-common, plan reuse (slot views,
 plan cache, target partitions), and result slots (a query's result, or the
 rows it computed for one of its shared CTEs, kept in a slot on the server).
 
+## The fork's Sail-specific conventions
+
+The querygraph/sail fork changes no standard Spark behaviour unless a client
+opts in through these; all are experimental, and none would go upstream in
+this form without a proper API design.
+
+Session settings (`spark.conf.set`):
+
+1. `spark.sail.slotViews`: comma-separated temporary view names. Creating or
+   replacing one runs its query once and keeps the rows in memory on the
+   server (a slot); a plan reading the view sees the slot's rows when it
+   runs. Slot schemas are made all-nullable.
+2. `spark.sail.planCache`: `true` keeps each query's physical plan, keyed by
+   a hash of the relation as received (without the client's per-DataFrame
+   plan id). A repeated query is not parsed or planned again: its operators'
+   state is reset and it runs without the job runner's tracing. The contract:
+   inputs that are not slots must not change while it is on. `false` clears
+   the cache, as does a slot whose schema changes.
+3. `spark.sail.targetPartitions`: the partitions cached plans are planned for.
+
+In the SQL text:
+
+4. `/* sail.result_slot=NAME */` as the leading comment: the query's result
+   goes into slot NAME (which must exist as a slot view with the same
+   columns) and the client gets no rows. `/* sail.result_slot=NAME:CTE */`:
+   the client gets the rows as usual, and the rows the query computed for its
+   shared CTE `CTE` go to the slot afterwards, matched by position and type.
+
+In the server's environment:
+
+5. `SAIL_EXECUTION_METRICS=off`: operators register no execution metrics and
+   do not time their polls (read once per process); `EXPLAIN ANALYZE` then
+   shows none.
+
+In a query's named arguments:
+
+6. Arguments named `__slot_NAME` whose value is an Arrow IPC stream (binary)
+   fill slot NAME before a cached plan runs, and are left out of the plan
+   cache's key: a query carries its own inputs in one request.
+
+Changes that need no convention (they apply to every query): recursive CTEs
+and CTEs computed once when referenced more than once; column-only
+projections folded into CTE references and slot scans, cooperative in-memory
+leaves and merged projection pairs; slots reporting row counts to the join
+planner; and the vendored DataFusion changes (nested scalar equality,
+#26066; the output bytes metric, #26071; memory counted from buffers).
+
 ## Sail
 
 ### Bugs and gaps, not filed yet
@@ -110,6 +157,11 @@ rows it computed for one of its shared CTEs, kept in a slot on the server).
 - Uploading a few thousand rows as a local relation (`createDataFrame` of an
   Arrow table) is faster than having the server read the same rows from a
   Parquet file just written: 4.5 ms against 11.8 ms for E1M1's `render_segs`.
+- PySpark's `toArrow()` first asks the server for the DataFrame's schema (an
+  analyze request: for a DataFrame the client has not run before, the query
+  is parsed and resolved again, 1 s for the tic) and then casts the whole
+  table it received to that schema. `df._to_table()[0]` returns the table as
+  sent (`saildoom/engine.py` `fetch`).
 - Running a PySpark Connect script with `python -c` exits early (doctest
   detection); scripts must be files or heredocs. A scratch script named after
   a stdlib module (`concurrent.py`) deadlocked the client.

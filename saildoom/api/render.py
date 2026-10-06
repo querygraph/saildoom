@@ -118,7 +118,7 @@ class ReusedRenderer:
                               sky_tex_id=self.meta["sky_tex_id"], sky_w=self.meta["sky_w"],
                               tic_lo=0, tic_hi=0, frames="frame_pose")
                 self.frames[key] = self.spark.sql(expand(self.sql, params))
-            table = self.frames[key].toArrow()
+            table = engine.fetch(self.frames[key])
             rgb = table.column("rgb").to_numpy().astype(np.uint32)
             if len(rgb) != 64000:
                 raise RuntimeError(f"frame has {len(rgb)} pixels, not 64000")

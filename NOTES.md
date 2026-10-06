@@ -151,14 +151,14 @@ Sail and compares call by call.
 
 `scripts/play.py` runs SQLDoom's own client unchanged on the API backend
 (`saildoom/pgshim.py` stands in for psycopg2): title screen, menus, a new
-game, walking and firing. In steady play it runs **30 tics a second with
-about 8.6 frames a second** on screen (the client draws once per pass of its
+game, walking and firing. In steady play it runs **32 tics a second with
+about 9.7 frames a second** on screen (the client draws once per pass of its
 loop and runs up to four tics a pass); Doom runs 35. On 2026-10-05 it began
 at 7 s a tic. A level's first tic plans the tic query (about 5 s).
 
 | | Before | Run alone | In the client |
 |---|---|---|---|
-| A tic | 7 s | 0.031 s | 0.033 s |
+| A tic | 7 s | 0.027 s | 0.031 s |
 | A frame | 0.9 s | 0.09 s | 0.11 s |
 
 The menus, automap and campaign traces replay exactly after every change
@@ -221,6 +221,7 @@ Step by step, a cached tic, run alone:
 | Execution metrics off (`SAIL_EXECUTION_METRICS=off`) | 0.041 s | creating, registering, timing and dropping every operator's metrics on every run |
 | Client: uploads without casts, each kind's rows from its own column, version directories in the background | 0.033 s | casting every uploaded column; filtering the whole wide result once per kind (8.8 ms to 1.8 ms) |
 | Hash join builds measured without `ArrayData`, slot row counts for join sides | 0.031 s | 65 ms of CPU a tic building 623 mostly empty or tiny hash tables |
+| The tic's inputs as arguments of its request; results fetched without PySpark's schema request and cast | 0.027 s | a round trip of slot fills before every tic; casting the result to the schema PySpark asked for |
 
 A frame: 0.83 s single, 0.17 s on a kept plan, 0.09 s with four partitions.
 In the client a tic and a frame contend on the server (a tic 0.055 s alone,
@@ -263,7 +264,7 @@ slot fills; about 4 ms of Python.
   player with the wrong flat (17,443 pixels); it does so from CedarDB's own
   recorded state too, so it is the renderer, not the game. The other 49
   differing frames are libm last bits as before.
-- Real-time play. SQLDoom's client plays on Sail at about 30 tics a second
+- Real-time play. SQLDoom's client plays on Sail at about 32 tics a second
   against Doom's 35 (see above).
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)
