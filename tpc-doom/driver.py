@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "reference"))
 TIC_RATE = 35  # Doom's game tics a second
 SKILL = 2
 SPEC_VERSION = "0.1"
+COMMANDS_SHA256 = "593c517baf34ca5bc4549936fa6e6aae8ee7deaab9cb44e48c497936c6f7ed94"
 WARMUP = 120  # tics of each test before the measurement interval
 
 
@@ -137,12 +138,14 @@ def warmup(seconds):
 
 
 def run(args):
-    commands = [c["command"] for c in json.loads((args.run / "commands.json").read_text())][:args.tics]
+    commands = [c["command"] for c in json.loads(args.commands.read_text())][:args.tics]
+    if args.tics == 1200 and hashlib.sha256(args.commands.read_bytes()).hexdigest() != COMMANDS_SHA256:
+        sys.exit(f"{args.commands} is not the benchmark's command stream")
     started = time.perf_counter()
     cur, sql = connect(args)
     sql.prepare_client(cur)
     session = Session(cur, sql, commands)
-    result = {"spec": SPEC_VERSION, "sut": args.sut, "run": args.run.name, "tics": len(commands),
+    result = {"spec": SPEC_VERSION, "sut": args.sut, "commands": args.commands.name, "tics": len(commands),
               "host": {"machine": platform.machine(), "system": platform.platform(),
                        "python": platform.python_version()},
               "connect_s": round(time.perf_counter() - started, 3),
@@ -231,11 +234,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sut", choices=("cedardb", "sail"), required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--run", type=Path, default=ROOT / "reference/run-e1m1-b")
+    ap.add_argument("--commands", type=Path, default=ROOT / "tpc-doom/inputs/run-e1m1-b-commands.json")
     ap.add_argument("--tics", type=int, default=1200, help="fewer only for trying the driver out")
-    ap.add_argument("--sqldoom", type=Path, default=ROOT.parent / "saildoom-ref/sqldoom")
+    ap.add_argument("--sqldoom", type=Path, default=Path(os.environ.get("SAILDOOM_SQLDOOM", ROOT.parent / "saildoom-ref/sqldoom")))
     args = ap.parse_args()
-    args.out, args.run, args.sqldoom = args.out.resolve(), args.run.resolve(), args.sqldoom.resolve()
+    args.out, args.commands, args.sqldoom = args.out.resolve(), args.commands.resolve(), args.sqldoom.resolve()
     run(args)
 
 

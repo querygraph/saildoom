@@ -20,7 +20,7 @@ the joke's. All the credit for Doom in SQL is SQLDoom's.
 | Game | SQLDoom, [`cedardb/sqldoom`](https://github.com/cedardb/sqldoom) at commit `95753a2`: its client's database API (`doom_sql.py`) and the statements behind it |
 | Data | Freedoom 0.13.0 `freedoom1.wad`, loaded into SQLDoom's tables by SQLDoom's loader (`wad_loader.py`) |
 | Level | E1M1, skill 2 |
-| Input | The recorded run `reference/run-e1m1-b/commands.json` in [`querygraph/saildoom`](https://github.com/querygraph/saildoom), 1,200 tic commands, SHA-256 `593c517b…f7ed94`: a bot's run with god mode and every weapon (cheats typed before tic 1), firing chaingun, shotgun and rockets, imps throwing fireballs, barrels chaining, doors, a lift, pickups and a secret |
+| Input | The recorded run [`tpc-doom/inputs/run-e1m1-b-commands.json`](inputs/run-e1m1-b-commands.json), 1,200 tic commands, SHA-256 `593c517b…f7ed94`: a bot's run with god mode and every weapon (cheats typed before tic 1), firing chaingun, shotgun and rockets, imps throwing fireballs, barrels chaining, doors, a lift, pickups and a secret |
 | Driver | [`tpc-doom/driver.py`](driver.py) |
 
 The system under test (SUT) is everything between the driver's call into
