@@ -27,22 +27,32 @@ in red).
 
 ## Play it
 
-SQLDoom's own client, unchanged, with every tic and frame computed by Sail:
+SQLDoom's own client, unchanged, with every tic and frame computed by Sail.
+From a source checkout, on macOS or Linux with git, curl, Rust (cargo) and
+[uv](https://docs.astral.sh/uv/):
 
 ```sh
+git clone https://github.com/querygraph/saildoom.git
+cd saildoom
+scripts/setup.sh      # about 20 to 40 minutes, almost all of it building Sail
 scripts/play-sail.sh
 ```
 
-It starts the querygraph/sail fork's server (`work/recursive-cte`, built with
-`cargo build --release -p sail-cli`; `SAILDOOM_SAIL` points at the binary)
-unless one is already listening on port 50053, opens the game window, and
-stops the server it started when you quit. It needs SQLDoom's checkout next to
-this one (`../saildoom-ref/sqldoom`, or `SAILDOOM_SQLDOOM`), the Freedoom data
-in `data/freedoom1`, and this repository's `.venv`.
+`scripts/setup.sh` installs Python 3.12 and the environment
+(`requirements.txt`) into `.venv`; clones SQLDoom's client
+([cedardb/sqldoom](https://github.com/cedardb/sqldoom)) at the commit SailDoom
+is checked against; downloads Freedoom's tables as Parquet (release
+[`play-data-1`](https://github.com/querygraph/saildoom/releases/tag/play-data-1));
+and builds the Sail fork, [`querygraph/sail` `saildoom`](https://github.com/querygraph/sail/tree/saildoom),
+in release mode. The checkouts go in `.build/` and the paths in
+`.saildoom.env`. To use a Sail binary you built already, set
+`SAILDOOM_SAIL=/path/to/sail` when running setup.
 
-The game opens on the title screen. A new game's first tic takes about 5 s
-(Sail plans the tic query, once per level); after that it runs at about 32
-tics and 10 frames a second, against Doom's 35.
+`scripts/play-sail.sh` starts the fork's server (unless one is already
+listening on port 50053), opens the game window, and stops the server it
+started when you quit. The game opens on the title screen. A new game's first
+tic takes about 5 s (Sail plans the tic query, once per level); after that it
+runs at about 32 tics and 10 frames a second, against Doom's 35.
 
 | | |
 |---|---|
@@ -57,6 +67,13 @@ tics and 10 frames a second, against Doom's 35.
 | Escape | menu |
 | F6 | performance mode |
 | F9, F10 | record a demo, play it back |
+
+## Reports
+
+- [`docs/reports/saildoom-on-sail.md`](docs/reports/saildoom-on-sail.md): the whole port.
+- [`docs/reports/datafusion-findings.md`](docs/reports/datafusion-findings.md): what the workload found in DataFusion, and the fork's fixes.
+- [`docs/reports/sail-findings.md`](docs/reports/sail-findings.md): what to improve in Sail, and where it touches the fork's conventions.
+- [`DDD.md`](DDD.md): everything found, in one place.
 
 ## How it is built
 
