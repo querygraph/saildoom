@@ -212,6 +212,34 @@ when they are refreshed first: every tic for the commands
 the tic (a cheat, a menu, a load, a new level) has written the tables and
 `world` is packed again from them. They cost server memory only.
 
+### Plan: a narrow world (to return to)
+
+Estimated saving: about 5 to 8 ms of a 33 ms tic (15 to 25%), not the
+headline the nulls suggest, because most of the tic's logic (most of its
+3,551 operators) already works on narrow per-kind CTEs.
+
+| What the width costs | Per tic | Basis |
+|---|---|---|
+| Shipping the changed rows (0.5 MB, mostly nulls) | ~2 ms, would be ~0.2 ms | measured: the whole 6.5 MB world takes ~30 ms beyond the request, ~4.6 ms per MB |
+| Request overhead of the 37-column schema | ~0 | measured: an empty wide result 4.7 ms, one narrow column 4.4 ms |
+| Server work on wide rows: unpacking `prev` (67 filtered scans of the 4,785-row world), repacking `step` (35 branches building null struct children), the change hashes | an estimated 3 to 6 ms of ~17 ms of execution | not measured yet |
+| Client handling | ~1 ms | measured: `write_kinds` 1.8 ms |
+| Planning the 1,200 null struct literals | maybe 1 to 2 s, once a level | not part of steady play |
+
+What a narrow design needs, since one query returns one relation and the
+recursive form of a whole run (the video) needs one relation too:
+
+- A result slot per kind instead of one `world` slot (an easy extension of
+  the fork's `/* sail.result_slot=... */`).
+- A narrow way to return the changed rows to the client: several result sets,
+  or a serialized row per change; each has its own cost.
+- Every `sql/tic_*.sql` file's unpack and pack layer redone, and every trace
+  and recorded run re-verified for exactness.
+
+First step, about 15 minutes: time the tic's unpack, repack and change-hash
+layer on its own, with no game logic, as a cached query, to turn the 3 to
+6 ms estimate into a measurement before deciding.
+
 ## Spark SQL against Postgres and CedarDB
 
 ### Integers, division, rounding
