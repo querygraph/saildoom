@@ -120,7 +120,9 @@ class Store:
         if held is not None and held[0] == self.paths[name]:
             return held[1]
         p = Path(self.paths[name])
-        return pq.read_table(p) if p.is_file() else pq.read_table(str(p))
+        table = pq.read_table(p) if p.is_file() else pq.read_table(str(p))
+        self.held[name] = (self.paths[name], table)
+        return table
 
     def query(self, sql, params=None):
         query = expand(strip_comments(sql), params or {})

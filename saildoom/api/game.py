@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from .. import game
-from . import tic_engine
+from . import client_queries, tic_engine
 from ..backend import cedar_real, literal, pg, real_literal
 from ..sqlmacro import strip_comments
 from ..world import KINDS, TRANSIENT_KINDS, World
@@ -158,20 +158,30 @@ def register(b):
             b.update("demos", {"tic_count": f"GREATEST(t.tic_count, {dtic + 1})"}, f"t.demo_id = {recording}")
             b.update("screen_state", {"demo_tic": "t.demo_tic + 1"}, "t.id = 0")
 
+    arrow_client = os.environ.get("SAILDOOM_ARROW_CLIENT", "1") == "1"
+
     @b.handler("doom_sound_events")
     def sound_events(map_id, player, map_id2, after):
+        if arrow_client:
+            return client_queries.sound_events(s, map_id, player, map_id2, after)
         return [tuple(r) for r in s.query(pg(client_sql("sound_events.sql"), (map_id, player, map_id2, after)))]
 
     @b.handler("doom_sound_loops")
     def sound_loops(map_id, player):
+        if arrow_client:
+            return client_queries.sound_loops(s, map_id, player)
         return [tuple(r) for r in s.query(pg(client_sql("sound_loops.sql"), (map_id, player)))]
 
     @b.handler("doom_game_tick_finish")
     def tick_finish(map_id, player):
+        if arrow_client:
+            return client_queries.tick_finish(s, map_id, player)
         return [tuple(r) for r in s.query(pg(client_sql("game_tick_finish.sql"), (map_id, player)))]
 
     @b.handler("doom_camera_pose")
     def camera(map_id, player, alpha):
+        if arrow_client:
+            return client_queries.camera_pose(s, map_id, player, alpha)
         a = max(0.0, min(1.0, float(alpha)))
         rows = s.query(f"""SELECT ps.previous_x + (ps.position_x - ps.previous_x) * {a!r}D AS x,
             ps.previous_y + (ps.position_y - ps.previous_y) * {a!r}D AS y,
