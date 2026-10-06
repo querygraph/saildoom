@@ -164,6 +164,7 @@ def run(args):
     measured = times[WARMUP:]
     result["tic_test"] = {"warmup": warmup(times), "elapsed_s": round(sum(measured), 3),
                           "tics_per_s": round(len(measured) / sum(measured), 2), "tic": summary(measured)}
+    result["tic_test"]["per_tic_ms"] = [round(1000 * t, 3) for t in times]
     result["snapshots"] = snapshots
 
     # Test 2: real time. The level starts again, then every tic is followed by
@@ -190,12 +191,15 @@ def run(args):
     rate = len(measured) / sum(measured)
     result["realtime_test"] = {"warmup": warmup(pairs), "elapsed_s": round(sum(measured), 3),
                                "tpsD": round(rate, 2), "realtime_factor": round(rate / TIC_RATE, 3),
-                               "tic": summary(tic_times[WARMUP:]), "frame": summary(frame_times[WARMUP:])}
+                               "tic": summary(tic_times[WARMUP:]), "frame": summary(frame_times[WARMUP:]),
+                               "per_tic_ms": [round(1000 * t, 3) for t in tic_times],
+                               "per_frame_ms": [round(1000 * t, 3) for t in frame_times]}
     result["frames"] = frames
     result["load_average_after"] = [round(x, 1) for x in os.getloadavg()]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=1))
-    print(json.dumps({k: v for k, v in result.items() if k not in ("snapshots", "frames")}, indent=1))
+    print(json.dumps({k: v for k, v in result.items() if k not in ("snapshots", "frames")},
+                     default=str, indent=1)[:4000])
 
 
 def close(a, b):
