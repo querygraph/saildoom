@@ -150,26 +150,95 @@ Sail and compares call by call.
 ## Playing SQLDoom's client on Sail
 
 `scripts/play.py` runs SQLDoom's own client unchanged on the API backend
-(`saildoom/pgshim.py` stands in for psycopg2). It plays, slowly: a tic takes
-about 7 s and a frame 0.9 s.
+(`saildoom/pgshim.py` stands in for psycopg2): title screen, menus, a new
+game, walking and firing. It plays at about 8 tics a second, with about 2.5
+frames a second on screen (the client draws once per pass of its loop, and
+runs up to four tics a pass). On 2026-10-05 it began at 7 s a tic.
 
-Nearly all of a tic is Sail planning the tic query (710 KB of SQL, 312 CTEs);
-running it is cheap (the same SQL steps 1,200 tics in 18 s when planned
-once). A profile of one tic on a symbolized fork build: the logical
+| | Before | Planned once | In the client |
+|---|---|---|---|
+| A tic | 7 s | 0.09 s | 0.13 s |
+| A frame | 0.9 s | 0.09 s | 0.13 s |
+
+The menus, automap and campaign traces replay exactly after every change
+below, and a frame from a kept plan is byte for byte the frame the
+single-frame renderer draws.
+
+### Where the time was
+
+Nearly all of a tic was Sail planning the tic query (710 KB of SQL, 312
+CTEs); running it is cheap. A profile on a symbolized fork build: the logical
 optimizer 46%, physical planning 36%, Sail's resolver 18%. About a quarter
-of all samples compare struct literals: every UNION branch of the world's
+of all samples compared struct literals: every UNION branch of the world's
 packing carries a `CAST(NULL AS STRUCT<...>)` for each other kind, and
 `EquivalenceProperties::project` registers each as a constant and compares
-them (`Literal::dyn_eq`, `StructArray::eq`, which converts both arrays to
-`ArrayData`). Rewriting the SQL did not help: reading each kind from its own
-table plans in 15 s (the shared CTEs cost more than the pruned union), and
-non-literal placeholders in 11.7 s.
+it with every other (`Literal::dyn_eq`, then `StructArray::eq`, which
+converts both arrays to `ArrayData` before comparing anything). Rewriting
+the SQL did not help: reading each kind from its own table plans in 15 s
+(the shared CTEs cost more than the pruned union), non-literal placeholders
+in 11.7 s. The fix belongs in DataFusion: compare the types first
+([apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065),
+[#26066](https://github.com/apache/datafusion/pull/26066)); the fork vendors
+it. That took planning from 6.5 s to 4.7 s; planning every tic could not get
+much further, so the tic is now planned once.
 
-Measured while building the tic up stage file by stage file: the world
-packing alone plans in 1.7 s; reading two different kinds from it makes it a
-shared CTE, planned whole (5.5 s against 0.9 s for one kind read twice).
+### Planned once, run every tic
 
-Interactive speed needs the tic planned once and executed every tic.
+The fork adds two session options (`sail_common_datafusion::plan_reuse`):
+
+- `spark.sail.slotViews` names temporary views whose rows are held in memory
+  (a slot). Replacing such a view runs its query once and keeps the rows; the
+  view is a scan of the slot, which reads the slot's rows when it runs.
+- `spark.sail.planCache = true` keeps each query's physical plan, keyed by a
+  hash of the relation as received. A repeated query is not parsed or planned
+  again: its operators' state is reset and it runs, reading the slots'
+  current rows.
+- `spark.sail.targetPartitions` sets the partitions cached plans are planned
+  for.
+
+`saildoom/api/tic_engine.py` runs the tic in a Spark session of its own: the
+world's tables (cut to the map), the commands, render_segs and the next sound
+event id are slots, and one DataFrame per level is run every tic.
+`saildoom/api/render.py` does the same for frames with
+`sql/renderer_batch.sql`: the pose is a one-row slot.
+
+Step by step, a cached tic, run alone:
+
+| Step | Tic | What it removed |
+|---|---|---|
+| Plan reuse | 1.1 s | analysis, optimization, physical planning |
+| Cache looked up before parsing | 0.55 s (est.) | parsing 710 KB of SQL on every run |
+| One partition, no tracing, reset keeps properties | 0.10 s | repartitioning, per-operator tracing, recomputing every node's properties |
+| Client queries from Arrow, unchanged tables left alone | 0.10 s | four small queries a tic planned on Sail (67 ms in the client) |
+| Only changed kinds returned, key hashed | 0.09 s | 6.8 MB of null struct columns a tic (now 0.5 MB) |
+
+A frame: 0.83 s single, 0.17 s on a kept plan, 0.09 s with four partitions.
+
+### Where the time is now
+
+A tic, run alone (0.09 s): about 40 ms executing the plan, spread over
+hundreds of operators (hash-join builds, projections, the shared CTEs' tasks)
+with no single hot spot; about 27 ms refreshing slots (some eight small
+requests, each planned); about 20 ms of Python. In the client, tics and
+frames slow each other by about 40%: the game and the render worker share
+the client's Python process and the server.
+
+### Next
+
+- **The render worker in a process of its own**, so frames and tics stop
+  contending for one Python interpreter. Target: 15 to 20 tics a second.
+- **Optional: the world kept inside Sail between tics** (plan step 3, the
+  rest of it). The tic's result would fill the next tic's slots on the server,
+  instead of the client writing the changed tables and the server reading
+  them back (about 27 ms of slot refreshes a tic). The client still needs the
+  rows for the renderer and the other statements, so it saves the refreshes,
+  not the writes.
+- **Not planned: the game loop as one never-ending recursive query** (plan
+  step 5). A recursive iteration costs about what a cached tic now does; it
+  would save little beyond step 3.
+- **35 tics a second** needs the plan's execution well under 30 ms: engine
+  work on running small, very wide plans, with no single hot spot to start
+  from.
 
 ## Not done yet
 
@@ -182,10 +251,8 @@ Interactive speed needs the tic planned once and executed every tic.
   player with the wrong flat (17,443 pixels); it does so from CedarDB's own
   recorded state too, so it is the renderer, not the game. The other 49
   differing frames are libm last bits as before.
-- Interactive play. At 168 ms a tic in the recursive form and 0.7 s for a
-  single frame, Sail is not interactive; throughput comes from batches,
-  which suits rendering a recorded or simulated run. SQLDoom's own client
-  runs on the API backend at about 7 s a tic (see above).
+- Real-time play. SQLDoom's client plays on Sail at about 8 tics a second
+  against Doom's 35 (see above).
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)
 
@@ -218,3 +285,8 @@ TPC-DS results are identical on both for all 26 queries. TPC-DS at SF1 is too
 small for reuse to pay off: an inlined copy runs in parallel and streams, a
 shared result is collected first and replayed as one partition.
 `scripts/bench_tpcds_cte.py` runs the comparison.
+
+Later commits add plan reuse (slot views, the plan cache, a target partition
+count for cached plans; see "Playing SQLDoom's client on Sail") and vendor
+datafusion-common 55.1.0 with cheap equality for nested scalars until
+DataFusion releases it ([apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066)).
