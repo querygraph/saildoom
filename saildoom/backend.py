@@ -17,6 +17,7 @@ The handlers live in saildoom/api/: one module per area of SQLDoom (menus,
 the level flow, the game tic, saves, demos, the automap, sound, deathmatch).
 """
 
+import contextlib
 import json
 import re
 import shutil
@@ -36,6 +37,8 @@ class Store:
     def __init__(self, spark, root, initial):
         self.spark = spark
         self.dirty = set()
+        self.batching = self.unsaved = False
+        self.held = {}  # name -> (path, table) for tables written from Arrow
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         manifest = self.root / "manifest.json"
@@ -48,7 +51,21 @@ class Store:
             self._register(name)
 
     def _save(self):
+        if self.batching:
+            self.unsaved = True
+            return
         (self.root / "manifest.json").write_text(json.dumps(self.paths, indent=0))
+
+    @contextlib.contextmanager
+    def batch(self):
+        """Write the manifest once, at the end of a statement that writes many tables."""
+        self.batching, self.unsaved = True, False
+        try:
+            yield
+        finally:
+            self.batching = False
+            if self.unsaved:
+                self._save()
 
     def _register(self, name):
         self.spark.read.parquet(self.paths[name]).createOrReplaceTempView(name)
@@ -90,6 +107,7 @@ class Store:
         path = versions / f"v{n:06d}.parquet"
         pq.write_table(table, path)
         self.paths[name] = str(path)
+        self.held[name] = (str(path), table)
         self.dirty.add(name)
         self._save()
 
@@ -98,6 +116,9 @@ class Store:
         return pq.read_schema(p) if p.is_file() else pq.ParquetDataset(str(p)).schema
 
     def arrow(self, name):
+        held = self.held.get(name)
+        if held is not None and held[0] == self.paths[name]:
+            return held[1]
         p = Path(self.paths[name])
         return pq.read_table(p) if p.is_file() else pq.read_table(str(p))
 
@@ -184,7 +205,8 @@ class Backend:
         fn = self.handlers.get(name)
         if fn is None:
             raise NotImplementedError(f"statement {name} is not ported to Sail")
-        rows = fn(*params)
+        with self.store.batch():
+            rows = fn(*params)
         return [] if rows is None else rows
 
 

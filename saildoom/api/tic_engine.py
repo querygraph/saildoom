@@ -56,10 +56,10 @@ class TicEngine:
         slots += list(STATIC_BY_MAP)
         self.spark.conf.set("spark.sail.slotViews", ",".join(slots))
         self.spark.conf.set("spark.sail.planCache", "true")
-        partitions = os.environ.get("SAILDOOM_TIC_PARTITIONS")
-        if partitions:
-            self.spark.conf.set("spark.sql.shuffle.partitions", partitions)
+        # A tic is a few thousand rows: one partition, no repartitioning.
+        self.spark.conf.set("spark.sail.targetPartitions", os.environ.get("SAILDOOM_TIC_PARTITIONS", "1"))
         self.loaded = {}
+        self.written = {}  # write_kinds' record of what it wrote last tic
         self.map_id = None
         self.sql = {}
 
@@ -122,14 +122,21 @@ class TicEngine:
         return out
 
 
-def write_kinds(store, world, out, map_id, player):
+def write_kinds(store, world, out, map_id, player, last):
     """Every kind's table: the other maps' rows (other players' for the
-    player) and this tic's rows of the kind, in the types the tic computed."""
+    player) and this tic's rows of the kind, in the types the tic computed.
+    A table is left as it is when its rows are the ones this function wrote
+    last tic and nothing else has written it since (`last`: kind -> (path,
+    rows)); its slot then needs no refresh either."""
     for kind, (col, table) in world.kinds.items():
         names = [n for n, _ in world.fields[kind] if n not in SKIP_FIELDS]
         rows = out.filter(pc.equal(out["kind"], kind)).column(col)
         rows = rows.combine_chunks() if isinstance(rows, pa.ChunkedArray) else rows
         new = pa.table({n: rows.field(n) for n in names}) if len(rows) else None
+        before = last.get(kind)
+        if (before is not None and before[0] == store.paths[table]
+                and (before[1] is None) == (new is None) and (new is None or new.equals(before[1]))):
+            continue
         old = store.arrow(table).select(names)
         if kind == "P":
             keep = pc.invert(pc.and_(pc.equal(old["map_id"], map_id), pc.equal(old["player_thing_id"], player)))
@@ -140,3 +147,16 @@ def write_kinds(store, world, out, map_id, player):
             [pa.field(n, rows.type.field(n).type) for n in names])
         old = old.cast(schema)
         store.write_arrow(table, pa.concat_tables([old, new]) if new is not None else old)
+        last[kind] = (store.paths[table], new)
+
+
+def tic_results(out, player):
+    """(sound event ids the tic used, whether the sound stage ran): the
+    _sound_attempts and tic_trace rows of the tic's result."""
+    sq = out.filter(pc.equal(out["kind"], "SQ"))
+    attempts = sum(v or 0 for v in sq.column("sq").combine_chunks().field("attempts").to_pylist()) if len(sq) else 0
+    tt = out.filter(pc.equal(out["kind"], "TT"))
+    tt = tt.column("tt").combine_chunks() if len(tt) else None
+    stages = ([s for s, p in zip(tt.field("stages").to_pylist(), tt.field("player_thing_id").to_pylist())
+               if p == player] if tt is not None else [])
+    return attempts, bool(stages and stages[0] is not None and stages[0] & 65536)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .. import game
 from . import tic_engine
-from ..backend import literal, pg, real_literal
+from ..backend import cedar_real, literal, pg, real_literal
 from ..sqlmacro import strip_comments
 from ..world import KINDS, TRANSIENT_KINDS, World
 
@@ -64,8 +64,11 @@ def register(b):
                       FROM parquet.`{s.paths["game_tic_commands"]}`
                       WHERE map_id = {map_id} AND player_thing_id = {player}"""
         out = eng.run(map_id, player, skill, cmd_sql, b.sequence("sound_events") + 1)
-        tic_engine.write_kinds(s, eng.world, out, map_id, player)
-        return after_tic(map_id, player)
+        tic_engine.write_kinds(s, eng.world, out, map_id, player, eng.written)
+        attempts, sound_ran = tic_engine.tic_results(out, player)
+        if attempts:
+            b.set_sequence("sound_events", b.sequence("sound_events") + int(attempts))
+        return sound_ran
 
     def after_tic(map_id, player):
         attempts = s.query(f"SELECT SUM(attempts) AS n FROM _sound_attempts WHERE map_id = {map_id}")[0]["n"]
@@ -111,17 +114,22 @@ def register(b):
     @b.handler("doom_game_tic")
     def game_tic(map_id, player, skill, fwd, strafe, running, turn, attack, switch, use):
         bit = 1 if skill <= 1 else 2 if skill == 2 else 4
-        f = real_literal
-        exists = bool(s.query(f"SELECT 1 FROM game_tic_commands WHERE map_id = {map_id} AND player_thing_id = {player}"))
-        new = f"""SELECT {map_id} AS map_id, {player} AS player_thing_id, {{serial}} AS command_serial,
-                 {skill} AS skill, {bit} AS skill_bit, {f(fwd)} AS move_fwd, {f(strafe)} AS move_strafe,
-                 {literal(bool(running))} AS running, {f(turn)} AS turn_degrees, {literal(bool(attack))} AS attack_held,
-                 {literal(switch)} AS weapon_switch_to, {literal(bool(use))} AS use_requested, 'idle' AS movement_mode"""
-        if exists:
-            row = new.format(serial="g.command_serial + 1") + " FROM game_tic_commands g WHERE g.map_id = {m} AND g.player_thing_id = {p}".format(m=map_id, p=player)
-        else:
-            row = new.format(serial="CAST(1 AS BIGINT)")
-        b.replace_rows("game_tic_commands", f"map_id = {map_id} AND player_thing_id = {player}", row)
+        # 08_cs_begin's upsert of the command row, in Arrow: the floats are
+        # the reals CedarDB stores for the client's literals (cedar_real).
+        import numpy as np
+        import pyarrow as pa
+        import pyarrow.compute as pc
+        old = s.arrow("game_tic_commands")
+        mine = pc.and_(pc.equal(old["map_id"], map_id), pc.equal(old["player_thing_id"], player))
+        prev = old.filter(mine)
+        serial = prev["command_serial"][0].as_py() + 1 if len(prev) else 1
+        real = lambda v: float(np.float32(cedar_real(v)))
+        row = dict(map_id=map_id, player_thing_id=player, command_serial=serial, skill=skill, skill_bit=bit,
+                   move_fwd=real(fwd), move_strafe=real(strafe), running=bool(running), turn_degrees=real(turn),
+                   attack_held=bool(attack), weapon_switch_to=switch, use_requested=bool(use),
+                   movement_mode="idle")
+        s.write_arrow("game_tic_commands", pa.concat_tables(
+            [old.filter(pc.invert(mine)), pa.Table.from_pylist([row], schema=old.schema)]))
         demo(map_id, player)
         due = run_tic(map_id, player, skill)
         return [(due,)]
