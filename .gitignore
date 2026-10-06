@@ -9,3 +9,5 @@ reference/run-*/
 video/
 /reference/trace-*/
 /data/api-store*/
+/.build/
+/.saildoom.env

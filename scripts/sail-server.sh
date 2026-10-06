@@ -7,6 +7,7 @@ set -eu
 BIN=${SAILDOOM_SAIL:-sail}
 if [ -n "${SAILDOOM_PYTHON:-}" ]; then
   export DYLD_LIBRARY_PATH="$SAILDOOM_PYTHON/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+  export LD_LIBRARY_PATH="$SAILDOOM_PYTHON/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   export PYTHONHOME="$SAILDOOM_PYTHON"
 fi
 # Frames and tics are small queries; extra partitions only add scheduling.

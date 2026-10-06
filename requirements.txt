@@ -1,0 +1,11 @@
+# SailDoom's Python environment (scripts/setup.sh installs it into .venv).
+pyspark-client==4.2.0
+pyarrow==25.0.1
+numpy==2.5.3
+pandas==2.3.3
+pygame==2.6.1
+grpcio==1.84.0
+grpcio-status==1.84.0
+googleapis-common-protos==1.75.5
+protobuf==7.36.2
+zstandard==0.25.0
