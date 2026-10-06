@@ -173,6 +173,14 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   filtered out).
 - Arrow nullability flags reach the physical schema: a table read from a file
   and one built from a query result differ only in them.
+- **A slot fill can fail on a list of structs** (fork bug, open): the slot's
+  schema makes a list's item field nullable, but `cast` leaves a
+  `List(non-null Struct)` column as it is, and building the batch with the
+  slot's schema fails ("column types must match schema types"). Seen once or
+  twice per 1,200-tic run in the render process, whose slots are filled from
+  Parquet files; the frame is skipped and the next one drawn. The fix:
+  relabel the nullability through `ArrayData` when `cast` returns the same
+  type.
 - Inside a plan, columns carry Sail's internal ids (`#19468`), not the
   query's names: a CTE's physical rows are named that way, and only the
   final projection renames them. The fork's result slot matches a CTE's rows

@@ -30,16 +30,17 @@ CAPTIONS = [
     # (from tic, text); "menus" and "planning" are the phases before tic 1.
     ("menus", "SQLDoom's own client, unchanged. Title screen and menus are rendered in SQL by Sail."),
     ("planning", "New game: the level's first tic plans the 710 KB tic query once (about 5 seconds)."),
-    (1, "Every tic: one request carrying the inputs; Sail runs the cached plan (about 25 ms)."),
+    (1, "Every tic: one request carrying the inputs; Sail runs the plan it keeps (25 to 40 ms; more in a fight)."),
     (180, "The world stays on the server between tics, in Sail slots; only what changed comes back."),
     (360, "Inputs replayed from a recorded bot run; every tic and frame is computed live by Sail."),
     (540, "Doors, lifts, pickups, monsters, rockets: joins and windows over one relation."),
-    (640, "The automap is a SQL query too."),
+    (640, "The automap is a SQL query too (the game pauses while it is open)."),
     (800, "Each frame: SQLDoom's renderer as Spark SQL, on a plan kept for the level (about 90 ms)."),
     (960, "Checked against CedarDB: 5,349 API calls replay with identical rows, frames byte for byte."),
     (1100, "Code, reports and the Sail fork: github.com/querygraph/saildoom"),
 ]
-AUTOMAP = (640, 760)  # Tab pressed at these tics
+AUTOMAP_AT = 640  # Tab pressed at this tic, and again after AUTOMAP_SECONDS
+AUTOMAP_SECONDS = 4
 
 
 class Recorder:
@@ -55,6 +56,7 @@ class Recorder:
         self.phase = "menus"
         self.done_at = None
         self.on_first_frame = None
+        self.shown = []
         self.lock = threading.Lock()
 
     def start(self, size):
@@ -62,7 +64,7 @@ class Recorder:
         self.proc = subprocess.Popen(
             ["ffmpeg", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
              "-s", f"{self.size[0]}x{self.size[1]}", "-r", str(FPS), "-i", "-",
-             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p",
              str(self.out)],
             stdin=subprocess.PIPE)
         self.t0 = time.perf_counter()
@@ -100,6 +102,13 @@ class Recorder:
 
     def capture(self, surface):
         import pygame
+        if os.environ.get("RECORD_DRY"):  # measure the run without recording it
+            if self.on_first_frame:
+                self.on_first_frame()
+                self.on_first_frame = None
+            if self.phase == "playing":
+                self.shown.append(self.rate(self.tic_times))
+            return
         if self.proc is None:
             self.start(surface.get_size())
             if self.on_first_frame:
@@ -107,7 +116,7 @@ class Recorder:
             self.card(surface.get_size(), [
                 "Sail plays Doom",
                 "SQLDoom's own client, every tic and frame computed by Sail",
-                "(Spark SQL on Apache DataFusion, querygraph/sail fork)",
+                "(Spark SQL on Apache DataFusion, querygraph/sail fork; live rate at top left)",
             ], 5)
             self.t0 = time.perf_counter() - 0  # time starts after the title card
         due = int((time.perf_counter() - self.t0) * FPS)
@@ -126,6 +135,7 @@ class Recorder:
             frame.blit(box, (x, y))
             frame.blit(image, (x + 12, y + 7))
         if self.phase == "playing":
+            self.shown.append(self.rate(self.tic_times))
             stats = font.render(f"Sail: {self.rate(self.tic_times):.0f} tics/s, "
                                 f"{self.rate(self.frame_times):.0f} frames/s", True, (255, 230, 120))
             box = pygame.Surface((stats.get_width() + 16, stats.get_height() + 10), pygame.SRCALPHA)
@@ -139,7 +149,7 @@ class Recorder:
             self.written += 1
 
     def finish(self, surface_size):
-        if self.proc is None:
+        if self.proc is None or os.environ.get("RECORD_DRY"):
             return
         self.card(surface_size, [
             "github.com/querygraph/saildoom",
@@ -157,6 +167,7 @@ def main():
     ap.add_argument("--sqldoom", type=Path, default=ROOT.parent / "saildoom-ref/sqldoom")
     ap.add_argument("--tics", type=int, help="stop after this many tics (default: the whole run)")
     args = ap.parse_args()
+    args.out = args.out.resolve()  # play.py changes into SQLDoom's directory
     args.out.parent.mkdir(parents=True, exist_ok=True)
     commands = [c["command"] for c in json.loads((args.run / "commands.json").read_text())]
     if args.tics:
@@ -164,7 +175,7 @@ def main():
 
     os.environ["SDL_VIDEODRIVER"] = "dummy"
     os.environ["SDL_AUDIODRIVER"] = "dummy"
-    os.environ.setdefault("WINDOW_SCALE", "3")
+    os.environ.setdefault("WINDOW_SCALE", "2")
     import pygame
     recorder = Recorder(args.out)
 
@@ -211,9 +222,15 @@ def main():
         recorder.phase = "playing"
         recorder.tics += 1
         recorder.tic_times.append(time.perf_counter())
-        if recorder.tics in AUTOMAP:
-            for kind in (pygame.KEYDOWN, pygame.KEYUP):
-                pygame.event.post(pygame.event.Event(kind, key=pygame.K_TAB, mod=0, unicode="\t", scancode=43))
+        if recorder.tics == AUTOMAP_AT:
+            # The client pauses the game while the automap is open: it is
+            # closed again on a timer, not at a later tic.
+            def automap():
+                for delay in (0, AUTOMAP_SECONDS):
+                    time.sleep(delay)
+                    for kind in (pygame.KEYDOWN, pygame.KEYUP):
+                        pygame.event.post(pygame.event.Event(kind, key=pygame.K_TAB, mod=0, unicode="\t", scancode=43))
+            threading.Thread(target=automap, daemon=True).start()
         if recorder.tics == len(commands) and recorder.done_at is None:
             recorder.done_at = time.perf_counter()
 
@@ -239,7 +256,9 @@ def main():
         surface = pygame.display.get_surface()
         size = surface.get_size() if surface is not None else (recorder.size or (1280, 600))
         recorder.finish(size)
-    print(f"recorded {args.out}: {recorder.tics} tics")
+    shown = recorder.shown[len(recorder.shown) // 4:]
+    print(f"recorded {args.out}: {recorder.tics} tics; overlay rate median "
+          f"{sorted(shown)[len(shown) // 2] if shown else 0:.1f} tics/s")
 
 
 if __name__ == "__main__":
