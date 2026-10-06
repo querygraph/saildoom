@@ -222,8 +222,10 @@ parts AS (
   SELECT h.*, h.pt.part AS part, h.pt.tex AS tex, h.pt.z_bot AS z_bot, h.pt.z_top AS z_top,
          h.pt.v_anchor_base AS v_anchor_base, h.pt.v_anchor_add_tex_h AS v_anchor_add_tex_h
   FROM (
-    -- The nullable array is the first CASE branch on purpose: Sail takes a
-    -- CASE's list item nullability from its first branch (see NOTES.md).
+    -- Both arrays' items are nullable on purpose: Sail takes a CASE's list
+    -- item nullability from its first branch, and a batch whose rows all take
+    -- a branch with non-null items fails (see DDD.md); the seed's CASE never
+    -- yields NULL here, it only makes the item nullable.
     SELECT h0.*, explode(CASE WHEN h0.seed_x < 0 THEN array(
         CASE WHEN h0.bsec IS NULL AND h0.f_ceil > h0.f_floor THEN
           named_struct('part', 'solid', 'tex', h0.mid_tex, 'z_bot', h0.f_floor, 'z_top', h0.f_ceil,
@@ -259,9 +261,9 @@ parts AS (
         CASE WHEN h0.bsec IS NULL OR h0.b_ceil <= h0.b_floor THEN
           named_struct('part', 'occl', 'tex', CAST(NULL AS STRING), 'z_bot', 0, 'z_top', 0,
                        'v_anchor_base', 0, 'v_anchor_add_tex_h', FALSE) END
-      ) ELSE array(
+      ) ELSE array(CASE WHEN h0.seed_x < 0 THEN NULL ELSE
         named_struct('part', 'seed', 'tex', CAST(NULL AS STRING), 'z_bot', 0, 'z_top', 0,
-                     'v_anchor_base', 0, 'v_anchor_add_tex_h', FALSE)) END) AS pt
+                     'v_anchor_base', 0, 'v_anchor_add_tex_h', FALSE) END) END) AS pt
     FROM heights h0
   ) h
   WHERE h.pt IS NOT NULL

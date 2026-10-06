@@ -10,7 +10,7 @@ work goes on; [NOTES.md](NOTES.md) has the measurements in context.
 
 | Where | What | Status |
 |---|---|---|
-| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | A `CASE` over arrays of structs panics when only a later branch has a NULL item. | Issue, open; a Sail maintainer points to lakehq/sail#2643 as the fix. The renderer puts the nullable branch first. |
+| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | A `CASE` over arrays of structs panics when only a later branch has a NULL item. | Issue, open; a Sail maintainer points to lakehq/sail#2643 as the fix. Its other half, a batch that takes only a branch with non-null items, fails too (below); the renderer makes every branch's items nullable. |
 | [apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054) | `AggregateExec`'s MIN/MAX dynamic filter survives `reset_state`, so a recursive term's later iterations scan with the first iteration's bound (a barrel's blast found no blast radius). | Issue, open. Suggested fix: recreate the aggregate's dynamic filter in `reset_state`. The fork turns that pushdown off in plans with a recursive query. |
 | [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | Wrong rows: `eliminate_cross_join` with `extract_equijoin_predicate` drops an equi-join key whose one side spans two cross-joined relations. Reproduced on Sail main and DataFusion main 8248a57969: a query joining `a` cross join `k` to `b` on `b.t = a.t AND b.id = CASE k.k WHEN 0 THEN a.x ELSE a.y END` returns 42 rows instead of 2, and is correct with either rule removed. | Issue, open. The game writes one branch per respawn fog instead. |
 | [apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065) | Physical planning is slow, and grows faster than the query, with many typed NULL struct literals: `ScalarValue::eq` compares nested values through arrow's `ArrayData` conversion, and `EquivalenceGroup::add_constant` compares each new constant with every class. | Issue, open. |
@@ -173,14 +173,24 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   filtered out).
 - Arrow nullability flags reach the physical schema: a table read from a file
   and one built from a query result differ only in them.
-- **A slot fill can fail on a list of structs** (fork bug, open): the slot's
-  schema makes a list's item field nullable, but `cast` leaves a
-  `List(non-null Struct)` column as it is, and building the batch with the
-  slot's schema fails ("column types must match schema types"). Seen once or
-  twice per 1,200-tic run in the render process, whose slots are filled from
-  Parquet files; the frame is skipped and the next one drawn. The fix:
-  relabel the nullability through `ArrayData` when `cast` returns the same
-  type.
+- **A `CASE` over arrays of structs fails when a batch takes only one
+  branch** (Sail main and the fork; found 2026-10-06): the `CASE` is typed
+  from its first branch, `List(Struct)` with nullable items, but when every
+  row of a batch takes a branch whose items are non-null, it returns that
+  branch's `List(non-null Struct)` and building the batch fails ("column
+  types must match schema types"). With rows in both branches it works. One
+  line reproduces it:
+  `SELECT explode(CASE WHEN x < 0 THEN array(CASE WHEN x < -5 THEN named_struct('a', x) END) ELSE array(named_struct('a', 0)) END) FROM VALUES (1), (2) AS t(x)`.
+  It is the other half of lakehq/sail#2742 (non-null items first and a NULL
+  item later panics), so no order of the branches is safe. The renderer
+  failed on 1 or 2 frames a run, depending on how a frame's segs fell into
+  batches; the frame was skipped. Recorded at first as a slot-fill bug: it
+  is not one (Arrow's `cast` relabels nested nullability, and a test of the
+  fork's slot conversion passes without any change). Worked around in
+  `renderer.sql` and `renderer_batch.sql` by making every branch's items
+  nullable: the seed's struct is wrapped in a `CASE` that never yields NULL
+  there. Frames unchanged (526 compared with CedarDB, the same 5 libm
+  differences); a 1,249-tic client run has no render error.
 - Inside a plan, columns carry Sail's internal ids (`#19468`), not the
   query's names: a CTE's physical rows are named that way, and only the
   final projection renames them. The fork's result slot matches a CTE's rows

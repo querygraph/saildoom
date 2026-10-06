@@ -124,7 +124,8 @@ visible to queries.
 
 | What | Spark | Notes |
 |---|---|---|
-| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742): a `CASE` over arrays of structs panics when only a later branch has a NULL item | Spark evaluates it | Filed. A maintainer says lakehq/sail#2643 addresses it. SailDoom puts the nullable branch first. |
+| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742): a `CASE` over arrays of structs panics when only a later branch has a NULL item | Spark evaluates it | Filed. A maintainer says lakehq/sail#2643 addresses it. SailDoom makes every branch's items nullable. |
+| A `CASE` over arrays of structs fails when every row of a batch takes a branch with non-null items: it returns `List(non-null Struct)` under its declared `List(Struct)` (the other half of #2742; one-line repro in DDD.md) | Spark evaluates it | Not filed yet. Data-dependent: the renderer lost 1 or 2 frames a run to it. |
 | A deeply nested or very long arithmetic expression overflows a tokio worker's stack ("thread 'tokio-rt-worker' has overflowed its stack") and aborts the whole server | Spark analyzes such expressions; I have not checked its own depth limits | Not filed. A query should fail, not take the server down with it. |
 | `df.persist()` / `cache()` is a no-op ("Persist operation is not yet supported"), and `CACHE TABLE` is not implemented | Spark keeps the data | Not filed. Also the root of C1. |
 | PySpark 4.2's `createDataFrame` reads eleven `spark.sql.session.localRelation*` and related settings that Sail doesn't define, so the client fails until they are set | Spark defines them | Not filed. SailDoom sets Spark's defaults (`saildoom/engine.py`). |
