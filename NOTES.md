@@ -151,14 +151,14 @@ Sail and compares call by call.
 
 `scripts/play.py` runs SQLDoom's own client unchanged on the API backend
 (`saildoom/pgshim.py` stands in for psycopg2): title screen, menus, a new
-game, walking and firing. In steady play it runs **21.6 tics a second with
-about 6 frames a second** on screen (the client draws once per pass of its
+game, walking and firing. In steady play it runs **25 tics a second with
+about 7 frames a second** on screen (the client draws once per pass of its
 loop and runs up to four tics a pass); Doom runs 35. On 2026-10-05 it began
 at 7 s a tic. A level's first tic plans the tic query (about 5 s).
 
 | | Before | Run alone | In the client |
 |---|---|---|---|
-| A tic | 7 s | 0.045 s | 0.046 s |
+| A tic | 7 s | 0.041 s | 0.040 s |
 | A frame | 0.9 s | 0.09 s | 0.11 s |
 
 The menus, automap and campaign traces replay exactly after every change
@@ -217,6 +217,8 @@ Step by step, a cached tic, run alone:
 | Slots uploaded from Arrow, writes split by map and in the background | 0.058 s | the server reading back files just written; rewriting 141,000 `render_segs` rows of other maps |
 | Definition tables as slots | 0.055 s | reading 25 definition tables' files on every run |
 | The world kept in Sail between tics | 0.045 s | uploading the changed kinds back to the server every tic (about 8 fills, now 3) |
+| Projections folded into CTE references and slot scans, leaves cooperative | 0.044 s | 1,676 of 5,227 operators (column-only projections, `CooperativeExec`s) |
+| Execution metrics off (`SAIL_EXECUTION_METRICS=off`) | 0.041 s | creating, registering, timing and dropping every operator's metrics on every run |
 
 A frame: 0.83 s single, 0.17 s on a kept plan, 0.09 s with four partitions.
 In the client a tic and a frame contend on the server (a tic 0.055 s alone,
@@ -237,9 +239,9 @@ are filled from the tables and packed into `world` again.
 
 ### Where the time is now
 
-A tic, run alone (0.045 s): about 30 to 35 ms running the plan (hundreds of
-small operators: hash-join builds, projections, the shared CTEs' tasks, no
-single hot spot); 3 to 4 ms of slot fills; about 8 ms of Python.
+A tic, run alone (0.041 s): about 23 ms running the plan (3,551 operators:
+1,064 projections, 830 shared CTE references, 630 hash joins, 468 filters;
+no single hot spot); 4 ms of slot fills; the rest Python.
 
 ### Next
 
@@ -259,7 +261,7 @@ single hot spot); 3 to 4 ms of slot fills; about 8 ms of Python.
   player with the wrong flat (17,443 pixels); it does so from CedarDB's own
   recorded state too, so it is the renderer, not the game. The other 49
   differing frames are libm last bits as before.
-- Real-time play. SQLDoom's client plays on Sail at about 21.6 tics a second
+- Real-time play. SQLDoom's client plays on Sail at about 25 tics a second
   against Doom's 35 (see above).
 
 ## Sail fork additions (querygraph/sail `work/recursive-cte`)

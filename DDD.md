@@ -144,6 +144,21 @@ rows it computed for one of its shared CTEs, kept in a slot on the server).
   table) expands the list with `ScalarValue::to_array_of_size` per batch, for
   the lookup and again for Sail's bounds check (`array_length`): about 5% of
   running the tic, 27 uses.
+- **A plan of thousands of operators.** SailDoom's tic plans to 5,227
+  physical operators: 1,884 projections, 858 `CooperativeExec`s, 830 shared
+  CTE references, 630 hash joins. Sail reads a CTE through a projection at
+  every reference (820 projections only pick and rename a reference's
+  columns), and DataFusion's `EnsureCooperative` puts a `CooperativeExec` over
+  every leaf that does not say it is cooperative (856 over in-memory leaves).
+  The fork folds those projections into the leaves and makes the leaves
+  cooperative: 3,551 operators, 33 ms to 28 ms a run.
+- **Metrics are created on every execution**: every operator builds its
+  metrics (`MetricBuilder::build` allocates and registers each in a locked
+  set) and times its polls (`Instant::now`) each time it runs, and they are
+  dropped with the plan copy; for a plan of thousands of operators run every
+  few milliseconds this was about 15% of the run. The fork's vendored
+  datafusion-physical-expr-common can switch them off for the process
+  (`SAIL_EXECUTION_METRICS=off`).
 - **A shared CTE's reset clears state that every copy of the plan shares**
   (the fork's `WithSharedCtesExec`), so the next run's reset cannot be
   prepared while the current run is going.

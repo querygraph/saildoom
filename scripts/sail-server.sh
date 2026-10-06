@@ -12,4 +12,7 @@ fi
 # Frames and tics are small queries; extra partitions only add scheduling.
 export SAIL_EXECUTION__DEFAULT_PARALLELISM=${SAIL_EXECUTION__DEFAULT_PARALLELISM:-0}
 export RUST_LOG=${RUST_LOG:-warn}
+# The querygraph/sail fork: operators record no execution metrics (nothing
+# reads them, and a tic runs thousands of operators every few milliseconds).
+export SAIL_EXECUTION_METRICS=${SAIL_EXECUTION_METRICS:-off}
 exec "$BIN" spark server --port "${SAILDOOM_PORT:-50051}"
