@@ -8,9 +8,11 @@ tables: the tables are packed into world rows at tic 0, stepped to tic 1 with
 sql/tic_staging.sql's outputs added, and every table's next version is the
 other maps' rows plus this tic's."""
 
+import os
 from pathlib import Path
 
 from .. import game
+from . import tic_engine
 from ..backend import literal, pg, real_literal
 from ..sqlmacro import strip_comments
 from ..world import KINDS, TRANSIENT_KINDS, World
@@ -41,11 +43,44 @@ def register(b):
         for name in STATIC_BY_MAP:
             s._register(name)
 
+    engine_box = {}
+
     def run_tic(map_id, player, skill):
         if "_sound_attempts" not in s.paths:
             import pyarrow as pa
             s.write_arrow("_sound_attempts", pa.table({"map_id": pa.array([], pa.int32()),
                                                       "attempts": pa.array([], pa.int64())}))
+        if os.environ.get("SAILDOOM_PLAN_REUSE", "1") == "1":
+            return run_tic_reused(map_id, player, skill)
+        return run_tic_planned(map_id, player, skill)
+
+    def run_tic_reused(map_id, player, skill):
+        """The tic on a plan kept from the level's first tic (tic_engine.py)."""
+        if "engine" not in engine_box:
+            engine_box["engine"] = tic_engine.TicEngine(s, world())
+        eng = engine_box["engine"]
+        cmd_sql = f"""SELECT 1 AS tic, skill, skill_bit, move_fwd, move_strafe, running, turn_degrees,
+                             attack_held, weapon_switch_to, use_requested
+                      FROM parquet.`{s.paths["game_tic_commands"]}`
+                      WHERE map_id = {map_id} AND player_thing_id = {player}"""
+        out = eng.run(map_id, player, skill, cmd_sql, b.sequence("sound_events") + 1)
+        tic_engine.write_kinds(s, eng.world, out, map_id, player)
+        return after_tic(map_id, player)
+
+    def after_tic(map_id, player):
+        attempts = s.query(f"SELECT SUM(attempts) AS n FROM _sound_attempts WHERE map_id = {map_id}")[0]["n"]
+        if attempts:
+            b.set_sequence("sound_events", b.sequence("sound_events") + int(attempts))
+        row = s.query(f"SELECT stages FROM tic_trace WHERE map_id = {map_id} AND player_thing_id = {player}")
+        return bool(row and row[0]["stages"] & 65536)
+
+    def run_tic_planned(map_id, player, skill):
+        if "_sound_attempts" not in s.paths:
+            import pyarrow as pa
+            s.write_arrow("_sound_attempts", pa.table({"map_id": pa.array([], pa.int32()),
+                                                      "attempts": pa.array([], pa.int64())}))
+        for name in list(s.dirty):
+            s._register(name)
         w = world()
         for _, table in ALL_KINDS.values():
             b.spark.sql(f"SELECT 0 AS tic, * FROM {table}").createOrReplaceTempView("rec_" + table)
@@ -71,11 +106,7 @@ def register(b):
             s.write(table, f"""SELECT {cols} FROM {table} WHERE {keep}
                                UNION ALL
                                SELECT {fields} FROM _tic_out WHERE kind = '{kind}'""")
-        attempts = s.query(f"SELECT SUM(attempts) AS n FROM _sound_attempts WHERE map_id = {map_id}")[0]["n"]
-        if attempts:
-            b.set_sequence("sound_events", b.sequence("sound_events") + int(attempts))
-        row = s.query(f"SELECT stages FROM tic_trace WHERE map_id = {map_id} AND player_thing_id = {player}")
-        return bool(row and row[0]["stages"] & 65536)
+        return after_tic(map_id, player)
 
     @b.handler("doom_game_tic")
     def game_tic(map_id, player, skill, fwd, strafe, running, turn, attack, switch, use):

@@ -18,6 +18,7 @@ the level flow, the game tic, saves, demos, the automap, sound, deathmatch).
 """
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -34,6 +35,7 @@ class Store:
 
     def __init__(self, spark, root, initial):
         self.spark = spark
+        self.dirty = set()
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         manifest = self.root / "manifest.json"
@@ -50,6 +52,13 @@ class Store:
 
     def _register(self, name):
         self.spark.read.parquet(self.paths[name]).createOrReplaceTempView(name)
+        self.dirty.discard(name)
+
+    def _flush(self, sql):
+        """Register the written tables that `sql` names. A write only marks
+        its table: a tic writes dozens, and most are not read before the next."""
+        for name in [n for n in self.dirty if re.search(rf"\b{re.escape(n)}\b", sql)]:
+            self._register(name)
 
     def tables(self):
         return sorted(self.paths)
@@ -63,6 +72,7 @@ class Store:
         n = len(list(versions.glob("v*"))) if versions.exists() else 0
         path = versions / f"v{n:06d}"
         query = expand(strip_comments(sql), params or {})
+        self._flush(query)
         df = self.spark.sql(query)
         df.write.parquet(str(path))
         if not path.exists():
@@ -80,7 +90,7 @@ class Store:
         path = versions / f"v{n:06d}.parquet"
         pq.write_table(table, path)
         self.paths[name] = str(path)
-        self._register(name)
+        self.dirty.add(name)
         self._save()
 
     def arrow_schema(self, name):
@@ -92,7 +102,9 @@ class Store:
         return pq.read_table(p) if p.is_file() else pq.read_table(str(p))
 
     def query(self, sql, params=None):
-        return self.spark.sql(expand(strip_comments(sql), params or {})).collect()
+        query = expand(strip_comments(sql), params or {})
+        self._flush(query)
+        return self.spark.sql(query).collect()
 
 
 class Backend:
