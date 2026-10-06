@@ -25,6 +25,39 @@ by Sail. Release `v0.1-renderer` has the renderer-only videos
 (`saildoom-e1m1.mp4`, and `saildoom-vs-cedardb-e1m1.mp4` with the difference
 in red).
 
+## Play it
+
+SQLDoom's own client, unchanged, with every tic and frame computed by Sail:
+
+```sh
+scripts/play-sail.sh
+```
+
+It starts the querygraph/sail fork's server (`work/recursive-cte`, built with
+`cargo build --release -p sail-cli`; `SAILDOOM_SAIL` points at the binary)
+unless one is already listening on port 50053, opens the game window, and
+stops the server it started when you quit. It needs SQLDoom's checkout next to
+this one (`../saildoom-ref/sqldoom`, or `SAILDOOM_SQLDOOM`), the Freedoom data
+in `data/freedoom1`, and this repository's `.venv`.
+
+The game opens on the title screen. A new game's first tic takes about 5 s
+(Sail plans the tic query, once per level); after that it runs at about 32
+tics and 10 frames a second, against Doom's 35.
+
+| | |
+|---|---|
+| W, S or Up, Down | forward, back |
+| A, D | strafe |
+| Q, E or Left, Right, or the mouse | turn |
+| Shift | run |
+| Ctrl or left mouse button | fire |
+| Space | use (doors, switches) |
+| 1 to 7 | weapons |
+| Tab | automap |
+| Escape | menu |
+| F6 | performance mode |
+| F9, F10 | record a demo, play it back |
+
 ## How it is built
 
 - **Same SQL, different dialect.** Postgres divides integers as integers and
