@@ -112,7 +112,7 @@ class TicEngine:
             # cache by the relation, plan id included, and spark.sql() would
             # also send the SQL to be parsed as a command each time.
             self.sql[key] = self.spark.sql(expand(strip_comments(
-                f"WITH RECURSIVE prev AS (\n  {prev}\n),\n{step}\nSELECT * FROM step"), params))
+                f"WITH RECURSIVE prev AS (\n  {prev}\n),\n{step},\n{changed_output(w)}"), params))
         df = self.sql[key]
         sent = time.perf_counter()
         out = df.toArrow()
@@ -122,13 +122,41 @@ class TicEngine:
         return out
 
 
+def changed_output(world):
+    """The tail of the tic query: only the rows of kinds that changed, and a
+    marker row (tic -1) per changed kind. Every row carries every kind's
+    struct column, so the whole world is megabytes of nulls a tic; most
+    kinds do not change from one tic to the next. A kind changed when its
+    row count or the XOR of its rows' hashes differs from the world the tic
+    started from (`prev`)."""
+    sums = []
+    for kind, (col, _) in world.kinds.items():
+        for rel in ("step", "prev"):
+            sums.append(f"SELECT '{rel}' AS rel, '{kind}' AS kind, count(*) AS n, "
+                        f"bit_xor(xxhash64({col})) AS h FROM {rel} WHERE kind = '{kind}'")
+    nulls = ", ".join(f"CAST(NULL AS {world.struct_type(k)}) AS {col}" for k, (col, _) in world.kinds.items())
+    return (f"kind_sums AS (\n  " + "\n  UNION ALL\n  ".join(sums) + "\n),\n"
+            "changed AS (\n"
+            "  SELECT a.kind FROM kind_sums a JOIN kind_sums b ON a.kind = b.kind\n"
+            "  WHERE a.rel = 'step' AND b.rel = 'prev'\n"
+            "    AND (a.n <> b.n OR a.h IS DISTINCT FROM b.h)\n"
+            ")\n"
+            "SELECT * FROM step WHERE kind IN (SELECT kind FROM changed)\n"
+            f"UNION ALL\nSELECT -1 AS tic, kind, {nulls} FROM changed")
+
+
 def write_kinds(store, world, out, map_id, player, last):
     """Every kind's table: the other maps' rows (other players' for the
     player) and this tic's rows of the kind, in the types the tic computed.
     A table is left as it is when its rows are the ones this function wrote
     last tic and nothing else has written it since (`last`: kind -> (path,
     rows)); its slot then needs no refresh either."""
+    markers = out.filter(pc.equal(out["tic"], -1))
+    changed = set(markers["kind"].to_pylist())
+    out = out.filter(pc.not_equal(out["tic"], -1))
     for kind, (col, table) in world.kinds.items():
+        if kind not in changed:
+            continue
         names = [n for n, _ in world.fields[kind] if n not in SKIP_FIELDS]
         rows = out.filter(pc.equal(out["kind"], kind)).column(col)
         rows = rows.combine_chunks() if isinstance(rows, pa.ChunkedArray) else rows
@@ -150,13 +178,14 @@ def write_kinds(store, world, out, map_id, player, last):
         last[kind] = (store.paths[table], new)
 
 
-def tic_results(out, player):
-    """(sound event ids the tic used, whether the sound stage ran): the
-    _sound_attempts and tic_trace rows of the tic's result."""
-    sq = out.filter(pc.equal(out["kind"], "SQ"))
-    attempts = sum(v or 0 for v in sq.column("sq").combine_chunks().field("attempts").to_pylist()) if len(sq) else 0
-    tt = out.filter(pc.equal(out["kind"], "TT"))
-    tt = tt.column("tt").combine_chunks() if len(tt) else None
-    stages = ([s for s, p in zip(tt.field("stages").to_pylist(), tt.field("player_thing_id").to_pylist())
-               if p == player] if tt is not None else [])
+def tic_results(store, map_id, player):
+    """(sound event ids the tic used, whether the sound stage ran), from the
+    _sound_attempts and tic_trace tables write_kinds has just brought up to
+    date (an unchanged kind is not in the tic's result)."""
+    sq = store.arrow("_sound_attempts")
+    sq = sq.filter(pc.equal(sq["map_id"], map_id))
+    attempts = sum(v or 0 for v in sq["attempts"].to_pylist())
+    tt = store.arrow("tic_trace")
+    tt = tt.filter(pc.and_(pc.equal(tt["map_id"], map_id), pc.equal(tt["player_thing_id"], player)))
+    stages = tt["stages"].to_pylist()
     return attempts, bool(stages and stages[0] is not None and stages[0] & 65536)

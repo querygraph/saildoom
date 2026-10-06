@@ -65,7 +65,7 @@ def register(b):
                       WHERE map_id = {map_id} AND player_thing_id = {player}"""
         out = eng.run(map_id, player, skill, cmd_sql, b.sequence("sound_events") + 1)
         tic_engine.write_kinds(s, eng.world, out, map_id, player, eng.written)
-        attempts, sound_ran = tic_engine.tic_results(out, player)
+        attempts, sound_ran = tic_engine.tic_results(s, map_id, player)
         if attempts:
             b.set_sequence("sound_events", b.sequence("sound_events") + int(attempts))
         return sound_ran
