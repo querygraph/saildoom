@@ -1,0 +1,191 @@
+# DDD: Doom-Driven Development
+
+Porting SQLDoom from CedarDB to Sail is a stress test with an exact oracle:
+every pixel and every row of every tic either matches CedarDB or it does not.
+This file collects what the port found about Sail, DataFusion and Arrow, and
+where Spark SQL, Postgres and CedarDB disagree. It is kept up to date as the
+work goes on; [NOTES.md](NOTES.md) has the measurements in context.
+
+## Filed upstream
+
+| Where | What | Status |
+|---|---|---|
+| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | A `CASE` over arrays of structs panics when only a later branch has a NULL item. | Issue, open. The renderer puts the nullable branch first. |
+| [apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054) | `AggregateExec`'s MIN/MAX dynamic filter survives `reset_state`, so a recursive term's later iterations scan with the first iteration's bound (a barrel's blast found no blast radius). | Issue, open. The fork turns that pushdown off in plans with a recursive query. |
+| [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | Wrong rows: `eliminate_cross_join` with `extract_equijoin_predicate` drops an equi-join key whose one side spans two cross-joined relations. Reproduced on Sail main and DataFusion main 8248a57969. | Issue, open. The game writes one branch per respawn fog instead. |
+| [apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065) | Physical planning is slow, and grows faster than the query, with many typed NULL struct literals: `ScalarValue::eq` compares nested values through arrow's `ArrayData` conversion, and `EquivalenceGroup::add_constant` compares each new constant with every class. | Issue, open. |
+| [apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066) | The fix for #26065: compare lengths and data types (and pointer identity) before arrow's array equality. 35 struct columns x 20 fields: 862 ms to 147 ms. | PR, open. Vendored in the fork. |
+
+Fork commits (querygraph/sail `work/recursive-cte`): recursive CTEs, shared
+CTEs, the fixes the game found (CTE inlining of work-table readers, shared CTE
+reset ownership, aggregate dynamic filters in recursive plans), the vendored
+datafusion-common, and plan reuse (slot views, plan cache, target partitions).
+
+## Sail
+
+### Bugs and gaps, not filed yet
+
+- A deeply nested or very long arithmetic expression overflows a tokio
+  worker's stack and aborts the whole server process ("thread
+  'tokio-rt-worker' has overflowed its stack").
+- `df.persist()`/`cache()` is a no-op ("Persist operation is not yet
+  supported"), and `CACHE TABLE` is not implemented.
+- PySpark 4.2's `createDataFrame` reads eleven `spark.sql.session.localRelation*`
+  and related settings that Sail does not define; the client fails until they
+  are set (`saildoom/engine.py` sets Spark's defaults).
+- `localCheckpoint()` needs `execution.checkpoint.path`; with `memory:///` it
+  works, but checkpoints live until the session ends (the
+  `RemoveCachedRemoteRelationCommand` handler is a no-op).
+- Sail main has no `WITH RECURSIVE` (the fork adds it).
+- Writing an empty result with `df.write.parquet` writes no files, not even
+  one with the schema; reading the directory back fails
+  (`saildoom/backend.py` writes an empty file itself).
+- Once, with two clients replaying against one server at the same time:
+  `internal error: task context not found for operation`. Not reproduced
+  since; the replays now run one at a time.
+- `spark.sql.shuffle.partitions` set on a session does not change how many
+  partitions Sail plans for; `execution.default_parallelism` is server-wide
+  (0 means one per core). The fork adds `spark.sail.targetPartitions` for
+  cached plans.
+
+### Costs
+
+- **CTE inlining.** Sail resolves a CTE into a plan subtree and copies it at
+  every reference, and resolves every CTE in the `WITH` whether or not it is
+  used. SQLDoom's renderer, inlined, was 8.4 MB of EXPLAIN text. The fork
+  computes a CTE referenced more than once only once.
+- **Planning dominates small queries.** A frame was 0.7 s, almost all of it
+  parsing (Sail's chumsky parser, about a third), physical planning (about a
+  third) and logical optimization. About 58 µs per simple expression to parse
+  and resolve.
+- **A 710 KB query (the tic) planned in 6.5 s**: logical optimizer 46%,
+  physical planning 36%, resolver 18%; a quarter of all of it comparing
+  struct literals (DataFusion #26065).
+- **Superlinear optimization of deep filter chains**: 10 levels 26 ms, 50
+  levels 1.2 s, 100 levels 26 s.
+- **Every request formats its plans as strings** (initial logical, final
+  logical, final physical) whether or not anything reads them: about 15% of
+  planning the tic. The fork skips them where nothing reads them.
+- **`spark.sql()` is a round trip that parses the SQL** (PySpark sends it as a
+  `SqlCommand` first), and every DataFrame gets a new `plan_id`. Running the
+  same DataFrame again avoids both.
+- **The local job runner wraps every operator in a `TracingExec`** on every
+  execution; for a plan of hundreds of small operators this costs more than
+  the work.
+- **One partition per core** for a query over a few thousand rows: the
+  repartitioning costs more than the work (the tic: 680 ms at 10 partitions,
+  48 ms at 1).
+- **A cross join emits one batch per row of its left input**: `big CROSS JOIN
+  one_row` produced 164,700 one-row batches. Put the one-row input first.
+- **A Spark Connect round trip costs about 2 to 4 ms** even for a trivial
+  `createOrReplaceTempView`; independent ones can be sent concurrently.
+
+### Behaviour worth knowing
+
+- Temporary views are per session; two stores in one Spark session
+  overwrite each other's views. Use `SparkSession.builder.remote(url).create()`
+  for a separate session.
+- A DataFrame from an empty Arrow table needs a schema, and
+  `createDataFrame([], schema)` maps to different physical types than an Arrow
+  upload of the same columns; a slot that alternates between the two is
+  replaced each time (`saildoom/engine.py` uploads one row of nulls,
+  filtered out).
+- Arrow nullability flags reach the physical schema: a table read from a file
+  and one built from a query result differ only in them.
+- Running a PySpark Connect script with `python -c` exits early (doctest
+  detection); scripts must be files or heredocs. A scratch script named after
+  a stdlib module (`concurrent.py`) deadlocked the client.
+
+## DataFusion
+
+- **#26054, #26058, #26065** (above).
+- **`reset_plan_states` recomputes every node's properties.** Each node's
+  `reset_state` keeps its properties (`ChildrenPropertiesMode::Keep`), but the
+  `transform_up` walk rebuilds every parent with `with_new_children`, which
+  recomputes them: as costly as physical planning. The fork resets with a walk
+  that keeps them. Its documentation also says it does not support plans with
+  dynamic filters or recursive queries.
+- **`EquivalenceGroup::add_constant` is a linear scan** over the classes for
+  every new uniform constant: quadratic in the number of literals in a
+  projection.
+- **Re-planning a projection recomputes its equivalence properties**, and
+  physical optimizer rules (`EnsureRequirements`, filter pushdown, projection
+  pushdown) replace projections' children repeatedly.
+- **A recursive query's work table can be read once per iteration**; the fork
+  shares it between references (`SharedCteWorkTable`).
+- **`HashJoinExec` builds its hash table again on every execution** (as it
+  must after a reset); with hundreds of joins over small inputs this is a
+  visible share of running a cached plan.
+
+## Arrow (arrow-rs)
+
+- **Array equality converts to `ArrayData` first**: `impl PartialEq for
+  StructArray` (and for `dyn Array`) is `self.to_data() == other.to_data()`,
+  which builds `ArrayData` for both sides and every child before comparing
+  anything, even when the types differ.
+- **A NULL struct still has full-length children.** The game's world is one
+  relation with a struct column per kind; every row carries all 35 kinds'
+  structs, NULL but for its own. The tic's 4,785 rows were 6.8 MB of Arrow,
+  almost all of it null children, encoded by the server and decoded by the
+  client every tic (now 0.5 MB: only changed kinds are returned).
+- **Spark Connect's Arrow batches are not compressed.**
+
+## Spark SQL against Postgres and CedarDB
+
+### Integers, division, rounding
+
+- Postgres divides integers as integers; Spark's `/` always returns a double.
+  Use `DIV` (which truncates toward zero, as Postgres does).
+- Postgres' float-to-integer cast rounds half to even (`bround` in Spark);
+  Spark's truncates. CedarDB's casts to an integer truncate.
+- `ROUND(double)`: half away from zero in CedarDB and in Spark (`HALF_UP`).
+- `CEIL`/`FLOOR` of a double return a double in Postgres, a `BIGINT` in Spark.
+- Numeric division in CedarDB truncates to a scale that depends on the
+  operands: `200.0/2048.0` is `0.0976562`, `8.0*16.0/7.0` is `18.285714`
+  (SQLDoom's automap arrow length).
+
+### Single precision
+
+- In CedarDB, `real` combined with an integer or a decimal literal stays
+  `real`, and `POWER` and `SQRT` of a `real` are `real`: single precision
+  throughout (Postgres widens to double). `saildoom/sqlmacro.py` has `FHYPOT`.
+- `real - real` is single precision before a double multiply (the camera's
+  interpolation).
+- A decimal literal sent as a parameter becomes a `real` in CedarDB as
+  f32(mantissa) / f32(10^k) when written plainly, nearest when written with
+  an exponent: a different float a third of the time
+  (`saildoom/backend.py` `cedar_real`, probed against 2,000 values).
+- CedarDB returns `real` to clients as its shortest text; Sail returns the
+  float32 value as a double.
+- `215.18106079101562` as a double literal: CedarDB and Sail both give
+  `0x406ae5cb3fffffff`, one ulp below the correctly rounded value.
+
+### Functions and syntax
+
+- `generate_series(a, b)` is empty when `a > b`; Spark's `sequence(a, b)`
+  counts down (the `GS` macro guards it).
+- `GET_BYTE` on texture blobs becomes a join on a texel table; `LATERAL ...
+  LIMIT 1` becomes a window and a join; correlated scalar subqueries become
+  joins.
+- `ARG_MAX` ties are broken arbitrarily in CedarDB; ties made deterministic
+  with a secondary key (`layer * 256 + palette_index`).
+- Three-valued logic: `NOT (exists AND state = 'dead')` drops a row with no
+  state; a `COALESCE` there would keep it. `COALESCE(a AND b AND c, FALSE)` is
+  true only when all three are.
+- Void functions return `''` to the client in CedarDB.
+
+### Order and sequences
+
+- A `BIGSERIAL` consumes a value for every attempted insert, including rows
+  that `ON CONFLICT DO NOTHING` drops, as in Postgres.
+- CedarDB's order among one statement's inserted rows follows its plan, not
+  the order of the `UNION ALL`; sound event ids are compared as a set per tic.
+- CedarDB returns rows in no fixed order; traces are sorted before comparing.
+
+### Floating point across platforms
+
+- The last bit of `cos`, `tan`, `pow`, `atan2` and `sin` differs between
+  Apple's libm (Sail on macOS) and glibc (CedarDB in Linux); a flipped last
+  bit can move a `FLOOR` across an integer (5 of 526 renderer frames, 1 to 8
+  pixels each).
+- `-0.0` and `0.0` print differently and are compared as different values.
