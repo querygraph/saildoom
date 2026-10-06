@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 
+from saildoom import sqldoom_checkout  # noqa: E402
+
 FPS = 30
 
 CAPTIONS = [
@@ -164,7 +166,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=ROOT / "video/saildoom-interactive.mp4")
     ap.add_argument("--run", type=Path, default=ROOT / "reference/run-e1m1-b")
-    ap.add_argument("--sqldoom", type=Path, default=ROOT.parent / "saildoom-ref/sqldoom")
+    ap.add_argument("--sqldoom", type=Path, default=sqldoom_checkout())
     ap.add_argument("--tics", type=int, help="stop after this many tics (default: the whole run)")
     args = ap.parse_args()
     args.out = args.out.resolve()  # play.py changes into SQLDoom's directory

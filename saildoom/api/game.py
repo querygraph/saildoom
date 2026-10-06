@@ -14,12 +14,13 @@ from pathlib import Path
 
 from .. import game
 from . import client_queries, tic_engine
+from .. import sqldoom_checkout
 from ..backend import cedar_real, literal, pg, real_literal
 from ..sqlmacro import strip_comments
 from ..world import KINDS, TRANSIENT_KINDS, World
 
 ROOT = Path(__file__).resolve().parents[2]
-CLIENT = Path("/Users/alexy/src/saildoom-ref/sqldoom/sql/client")
+CLIENT = sqldoom_checkout() / "sql/client"
 STATIC_BY_MAP = ("linedef_geom", "node_path_steps", "nodes", "linedefs", "sector_adjacency",
                  "vertexes", "maps", "node_children", "segs", "ssectors")
 ALL_KINDS = dict(KINDS, **TRANSIENT_KINDS)

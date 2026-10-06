@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from saildoom import engine, pgshim  # noqa: E402
+from saildoom import engine, pgshim, sqldoom_checkout  # noqa: E402
 from saildoom.backend import Backend, Store  # noqa: E402
 
 
@@ -61,7 +61,7 @@ def scripted_input():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sqldoom", type=Path, default=ROOT.parent / "saildoom-ref/sqldoom")
+    ap.add_argument("--sqldoom", type=Path, default=sqldoom_checkout())
     ap.add_argument("--data", type=Path, default=ROOT / "data/freedoom1")
     ap.add_argument("--trace", type=Path, default=ROOT / "reference/trace-menus")
     ap.add_argument("--store", type=Path, default=ROOT / "data/play-store")

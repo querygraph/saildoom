@@ -31,6 +31,8 @@ sys.path.insert(0, str(ROOT / "reference"))
 
 TIC_RATE = 35  # Doom's game tics a second
 SKILL = 2
+from saildoom import sqldoom_checkout  # noqa: E402
+
 SPEC_VERSION = "0.1"
 COMMANDS_SHA256 = "593c517baf34ca5bc4549936fa6e6aae8ee7deaab9cb44e48c497936c6f7ed94"
 WARMUP = 120  # tics of each test before the measurement interval
@@ -292,7 +294,7 @@ def main():
         ap.add_argument("--at", required=True, help="tics, comma-separated")
         ap.add_argument("--out", type=Path, required=True)
         ap.add_argument("--commands", type=Path, default=ROOT / "tpc-doom/inputs/run-e1m1-b-commands.json")
-        ap.add_argument("--sqldoom", type=Path, default=Path(os.environ.get("SAILDOOM_SQLDOOM", ROOT.parent / "saildoom-ref/sqldoom")))
+        ap.add_argument("--sqldoom", type=Path, default=sqldoom_checkout())
         args = ap.parse_args()
         args.out, args.commands, args.sqldoom = args.out.resolve(), args.commands.resolve(), args.sqldoom.resolve()
         frames(args)
@@ -319,7 +321,7 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--commands", type=Path, default=ROOT / "tpc-doom/inputs/run-e1m1-b-commands.json")
     ap.add_argument("--tics", type=int, default=1200, help="fewer only for trying the driver out")
-    ap.add_argument("--sqldoom", type=Path, default=Path(os.environ.get("SAILDOOM_SQLDOOM", ROOT.parent / "saildoom-ref/sqldoom")))
+    ap.add_argument("--sqldoom", type=Path, default=sqldoom_checkout())
     args = ap.parse_args()
     args.out, args.commands, args.sqldoom = args.out.resolve(), args.commands.resolve(), args.sqldoom.resolve()
     run(args)

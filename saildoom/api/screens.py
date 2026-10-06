@@ -5,11 +5,12 @@
 
 from pathlib import Path
 
+from .. import sqldoom_checkout
 from ..backend import literal, pg
 from ..sqlmacro import strip_comments
 
 VOID = [("",)]
-CLIENT = Path("/Users/alexy/src/saildoom-ref/sqldoom/sql/client")
+CLIENT = sqldoom_checkout() / "sql/client"
 CODES = ("IDSPISPOPD", "IDCHOPPERS", "IDBEHOLDV", "IDBEHOLDS", "IDBEHOLDI", "IDBEHOLDR",
          "IDBEHOLDA", "IDBEHOLDL", "IDMYPOS", "IDCLIP", "IDKFA", "IDDQD", "IDFA")
 
