@@ -179,6 +179,39 @@ rows it computed for one of its shared CTEs, kept in a slot on the server).
   client every tic (now 0.5 MB: only changed kinds are returned).
 - **Spark Connect's Arrow batches are not compressed.**
 
+## The world as one relation
+
+SailDoom keeps the game's whole world as one relation with a struct column
+per kind of state (the player, sectors, Things, monster AI and the rest, 35
+in all, `saildoom/world.py`). Each row belongs to one kind and fills only its
+own column; the other 34 are NULL. That shape lets one `WITH RECURSIVE` query
+carry the whole world from tic to tic, and it has costs:
+
+- **The NULL columns are not free.** A NULL struct in Arrow still has its
+  child arrays at full length, so every row carries room for every kind's
+  fields. The world's 4,785 rows were 6.8 MB, almost all of it nulls, encoded
+  by the server and decoded by the client every tic until the tic returned
+  only the kinds that changed (0.5 MB). The same width is why each request
+  pays about 4.7 ms just for the 37-column schema, and why measuring a
+  batch's memory (DataFusion #26071, and the hash-join build reservation) was
+  so expensive.
+- **Packing makes typed NULL literals.** Each branch of the world's
+  `UNION ALL` puts `CAST(NULL AS STRUCT<...>)` in 34 columns: 1,200 struct
+  literals that physical planning compared pairwise (DataFusion #26065).
+- **The fix would be a narrower layout**: a relation per kind, or an Arrow
+  union type, which Spark SQL does not have. Either means restructuring all
+  of the tic's SQL; the port works around the width instead.
+
+### Table slots the tic no longer reads every tic
+
+With the world kept in Sail, each world table's slot (`rec_<table>`) is no
+longer refilled every tic: the tic reads the previous world from the one slot
+`world`. The `rec_*` slots keep their last rows, stale, and are read only
+when they are refreshed first: every tic for the commands
+(`rec_game_tic_commands`), and on the fallback path, when something outside
+the tic (a cheat, a menu, a load, a new level) has written the tables and
+`world` is packed again from them. They cost server memory only.
+
 ## Spark SQL against Postgres and CedarDB
 
 ### Integers, division, rounding
