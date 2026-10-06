@@ -7,6 +7,9 @@ through SQLDoom's own database API (doom_sql.py), and time every call.
   SAIL_REMOTE=sc://localhost:50053 driver.py --sut sail --out results/sail.json
   # Exactness: compare two result files tic by tic and frame by frame
   driver.py compare results/cedardb.json results/sail.json
+  # Frames that differ: save them from each system, then count their pixels
+  driver.py frames --sut cedardb --at 47,55 --out frames/cedardb
+  driver.py pixels frames/cedardb frames/sail results/cedardb.json results/sail.json --out pixels.json
 
 See tpc-doom/SPEC.md for what the tests are and what a report must disclose.
 """
@@ -71,20 +74,31 @@ def digest(value):
     return value
 
 
-def plain(rows):
-    """A snapshot's rows as JSON values (doubles kept, compared with a
-    tolerance by `compare`)."""
+def plain(value):
+    """A snapshot as JSON values, the way SailDoom's oracle compares the two
+    systems' answers (reference/check_api.py): a Decimal is the number it is,
+    a bytea its digest, and a single-precision value its shortest float32
+    text, which is what CedarDB sends for a `real` and what Sail's exact
+    float32 value prints as. Other doubles are kept as they are and compared
+    with a tolerance."""
     from decimal import Decimal
-    if rows is None:
-        return None
-    if not isinstance(rows, (list, tuple)):
-        rows = [rows]
-    out = []
-    for r in rows:
-        r = r if isinstance(r, (list, tuple)) else [r]
-        out.append([float(v) if isinstance(v, Decimal) else digest(v) if isinstance(v, (bytes, bytearray, memoryview))
-                    else v if isinstance(v, (int, float, str, bool, type(None))) else repr(v) for v in r])
-    return out
+    import numpy as np
+    if isinstance(value, dict):
+        return {k: plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [plain(v) for v in value]
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return digest(value)
+    if isinstance(value, Decimal):
+        value = float(value)
+    if isinstance(value, float) and value == value and abs(value) < 2**53 and value != int(value):
+        v32 = np.float32(value)
+        short = str(v32)
+        if np.isfinite(v32) and (float(v32) == value or float(short) == value):
+            return float(short)
+    if isinstance(value, (int, float, str, bool, type(None))):
+        return value
+    return repr(value)
 
 
 class Session:
@@ -210,6 +224,8 @@ def close(a, b):
             return False
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(close(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(close(a[k], b[k]) for k in a)
     return a == b
 
 
@@ -227,7 +243,70 @@ def compare(args):
               f"  {args.b.name}: {b['snapshots'][first]}")
 
 
+def frames(args):
+    """Replay the run's tics and save the frame after each listed tic, as
+    test R draws it (for counting the pixels of frames that differ; the
+    saved frames' digests are checked against a timed run's)."""
+    wanted = {int(t) for t in args.at.split(",")}
+    commands = [c["command"] for c in json.loads(args.commands.read_text())]
+    cur, sql = connect(args)
+    sql.prepare_client(cur)
+    session = Session(cur, sql, commands)
+    session.start_level()
+    sql.prepare_renderer(cur, session.map_id, session.player, SKILL)
+    session.start_level()
+    args.out.mkdir(parents=True, exist_ok=True)
+    for i in range(max(wanted)):
+        session.tic(i)
+        if i + 1 in wanted:
+            (args.out / f"{i + 1:04d}.bin").write_bytes(bytes(session.frame()))
+    print(f"saved {len(wanted)} frames to {args.out}")
+
+
+def pixels(args):
+    """Count the pixels that differ between the frames two systems drew at the
+    same tics, and check each frame against the digest its timed run recorded."""
+    import numpy as np
+    runs = [json.loads(p.read_text()) for p in (args.run_a, args.run_b)]
+    out = []
+    for f in sorted(args.a.glob("*.bin")):
+        tic = int(f.stem)
+        a, b = f.read_bytes(), (args.b / f.name).read_bytes()
+        for run, frame in zip(runs, (a, b)):
+            assert run["frames"][tic - 1] == digest(frame), f"tic {tic}: not the frame the timed run drew"
+        x = np.frombuffer(a, np.uint8).reshape(200, 320, 3).astype(int)
+        y = np.frombuffer(b, np.uint8).reshape(200, 320, 3).astype(int)
+        mask = (x != y).any(axis=2)
+        ys, xs = np.nonzero(mask)
+        out.append({"tic": tic, "pixels": int(mask.sum()), "max_channel_difference": int(np.abs(x - y).max()),
+                    "box": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())] if len(xs) else None})
+    args.out.write_text(json.dumps(out, indent=1))
+    print(f"{len(out)} frames; pixels differing: {sorted(o['pixels'] for o in out)}")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "frames":
+        ap = argparse.ArgumentParser()
+        ap.add_argument("cmd")
+        ap.add_argument("--sut", choices=("cedardb", "sail"), required=True)
+        ap.add_argument("--at", required=True, help="tics, comma-separated")
+        ap.add_argument("--out", type=Path, required=True)
+        ap.add_argument("--commands", type=Path, default=ROOT / "tpc-doom/inputs/run-e1m1-b-commands.json")
+        ap.add_argument("--sqldoom", type=Path, default=Path(os.environ.get("SAILDOOM_SQLDOOM", ROOT.parent / "saildoom-ref/sqldoom")))
+        args = ap.parse_args()
+        args.out, args.commands, args.sqldoom = args.out.resolve(), args.commands.resolve(), args.sqldoom.resolve()
+        frames(args)
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "pixels":
+        ap = argparse.ArgumentParser()
+        ap.add_argument("cmd")
+        ap.add_argument("a", type=Path, help="frames saved from one system")
+        ap.add_argument("b", type=Path, help="the same tics from the other")
+        ap.add_argument("run_a", type=Path, help="a timed run of the first system")
+        ap.add_argument("run_b", type=Path, help="a timed run of the second")
+        ap.add_argument("--out", type=Path, required=True)
+        pixels(ap.parse_args())
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "compare":
         ap = argparse.ArgumentParser()
         ap.add_argument("cmd")

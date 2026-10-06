@@ -57,8 +57,10 @@ test R. Each is compared with the reference run on CedarDB:
 - snapshots must be equal, with doubles equal to 1 part in 10⁹, which allows
   for the last bits of `sin`, `atan2` and `pow`, where libm implementations
   differ;
-- frames must be byte-identical. If one is not, the report must count the
-  pixels that differ and give each difference's cause.
+- frames must be byte-identical, except where a difference is traced to the
+  last bit of a libm function moving a value across an integer. The report
+  counts those frames and their pixels. Any other difference makes the run
+  inexact.
 
 A run that is not exact has no TPC-DOOM result. It may be published as
 "inexact", with its differences.

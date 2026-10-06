@@ -426,6 +426,13 @@ layer on its own, with no game logic, as a cached query, to turn the 3 to
   bit can move a `FLOOR` across an integer (5 of 526 renderer frames, 1 to 8
   pixels each).
 - `-0.0` and `0.0` print differently and are compared as different values.
+- **One frame draws the wrong floor flat** (renderer bug, open): after tic 730
+  of the 1,200-tic E1M1 run (`run-e1m1-b`), Sail draws the floor under the
+  player with a different flat from CedarDB's (17,443 pixels). It does so
+  from CedarDB's own recorded state too, so it is the renderer, not the game.
+  The run's other 49 differing frames are libm last bits (1 to 273 pixels; a
+  moved column boundary shifts a whole wall column). TPC-DOOM's first report
+  counts Sail's result as inexact because of it.
 
 ## Progress and tooling notes
 
