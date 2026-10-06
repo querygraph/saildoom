@@ -74,6 +74,7 @@ runs at about 32 tics and 10 frames a second, against Doom's 35.
 - [`docs/reports/datafusion-findings.md`](docs/reports/datafusion-findings.md): what the workload found in DataFusion, and the fork's fixes.
 - [`docs/reports/sail-findings.md`](docs/reports/sail-findings.md): what to improve in Sail, and where it touches the fork's conventions.
 - [`DDD.md`](DDD.md): everything found, in one place.
+- [`tpc-doom/`](tpc-doom/): TPC-DOOM, how fast a SQL database runs Doom: [the definition](tpc-doom/SPEC.md), [the driver](tpc-doom/driver.py), and [the first report](tpc-doom/reports/0001.md).
 
 ## How it is built
 

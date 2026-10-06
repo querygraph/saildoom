@@ -11,6 +11,13 @@ from pathlib import Path
 SUTS = (("cedardb", "CedarDB"), ("sail", "Sail (querygraph fork)"))
 
 
+def f(x, digits):
+    """x rounded half up from its shortest decimal text, as the adversari.al
+    page's renderer rounds, so the two show the same digits."""
+    from decimal import ROUND_HALF_UP, Decimal
+    return str(Decimal(repr(x)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP))
+
+
 def load(d, name):
     return json.loads((d / name).read_text())
 
@@ -23,20 +30,20 @@ def main():
     for d in map(Path, sys.argv[1:]):
         host = d.name.split("-", 1)[1].capitalize()
         diffs = load(d, "frame-differences.json") if (d / "frame-differences.json").exists() else {"frames": []}
-        other = [f for f in diffs["frames"] if not f["cause"].startswith("libm")]
-        libm = [f for f in diffs["frames"] if f["cause"].startswith("libm")]
+        other = [fr for fr in diffs["frames"] if not fr["cause"].startswith("libm")]
+        libm = [fr for fr in diffs["frames"] if fr["cause"].startswith("libm")]
         for sut, label in SUTS:
             runs = [load(d, f"{sut}-run{i}.json") for i in (1, 2, 3)]
             r = sorted(runs, key=lambda x: x["realtime_test"]["tpsD"])[1]
             t, rt = r["tic_test"], r["realtime_test"]
             verdict = "reference" if sut == "cedardb" else ("inexact" if other else "exact")
-            print(f"| {host} | {label} | {rt['tpsD']:.2f} | {rt['realtime_factor']:.3f} | {t['tics_per_s']:.1f} "
-                  f"| {t['tic']['p50_ms']:.1f} / {t['tic']['p95_ms']:.1f} | {rt['frame']['p50_ms']:.1f} / {rt['frame']['p95_ms']:.1f} "
-                  f"| {t['warmup']['max_s']:.2f} s (tic {t['warmup']['max_at_tic']}) | {r['first_frame_s']:.2f} s "
-                  f"| {' · '.join(f'{x['realtime_test']['tpsD']:.2f}' for x in runs)} | {verdict} |")
-        pixels = sorted(f["pixels"] for f in libm)
+            print(f"| {host} | {label} | {f(rt['tpsD'], 2)} | {f(rt['realtime_factor'], 3)} | {f(t['tics_per_s'], 1)} "
+                  f"| {f(t['tic']['p50_ms'], 1)} / {f(t['tic']['p95_ms'], 1)} | {f(rt['frame']['p50_ms'], 1)} / {f(rt['frame']['p95_ms'], 1)} "
+                  f"| {f(t['warmup']['max_s'], 2)} s (tic {t['warmup']['max_at_tic']}) | {f(r['first_frame_s'], 2)} s "
+                  f"| {' · '.join(f(x['realtime_test']['tpsD'], 2) for x in runs)} | {verdict} |")
+        pixels = sorted(fr["pixels"] for fr in libm)
         exact_rows.append(f"| {host} | {len(libm)}" + (f", {pixels[0]} to {pixels[-1]} pixels" if pixels else "")
-                          + " | " + ("; ".join(f"tic {f['tic']}, {f['pixels']:,} pixels: {f['cause']}" for f in other) or "none")
+                          + " | " + ("; ".join(f"tic {fr['tic']}, {fr['pixels']:,} pixels: {fr['cause']}" for fr in other) or "none")
                           + " |")
     print("\n| Host | Frames differing by libm last bits | Other differences |\n|---|---|---|")
     print("\n".join(exact_rows))

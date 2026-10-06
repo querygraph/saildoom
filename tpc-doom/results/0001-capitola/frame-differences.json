@@ -1,0 +1,611 @@
+{
+ "against": "cedardb-run1.json",
+ "sail_runs": [
+  "sail-run1.json",
+  "sail-run2.json",
+  "sail-run3.json"
+ ],
+ "note": "Sail's three runs drew the same frames; these are the frames that differ from CedarDB's, saved by `driver.py frames` and checked against the digests the timed runs recorded.",
+ "frames": [
+  {
+   "tic": 47,
+   "pixels": 28,
+   "max_channel_difference": 31,
+   "box": [
+    170,
+    72,
+    171,
+    85
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 55,
+   "pixels": 28,
+   "max_channel_difference": 24,
+   "box": [
+    166,
+    72,
+    167,
+    85
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 91,
+   "pixels": 9,
+   "max_channel_difference": 20,
+   "box": [
+    72,
+    84,
+    282,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 102,
+   "pixels": 1,
+   "max_channel_difference": 20,
+   "box": [
+    27,
+    120,
+    27,
+    120
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 109,
+   "pixels": 1,
+   "max_channel_difference": 8,
+   "box": [
+    33,
+    84,
+    33,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 110,
+   "pixels": 25,
+   "max_channel_difference": 8,
+   "box": [
+    15,
+    60,
+    305,
+    95
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 115,
+   "pixels": 5,
+   "max_channel_difference": 12,
+   "box": [
+    61,
+    84,
+    309,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 200,
+   "pixels": 8,
+   "max_channel_difference": 24,
+   "box": [
+    37,
+    69,
+    317,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 217,
+   "pixels": 28,
+   "max_channel_difference": 71,
+   "box": [
+    200,
+    61,
+    200,
+    88
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 231,
+   "pixels": 28,
+   "max_channel_difference": 28,
+   "box": [
+    39,
+    42,
+    110,
+    94
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 245,
+   "pixels": 15,
+   "max_channel_difference": 16,
+   "box": [
+    198,
+    97,
+    198,
+    166
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 269,
+   "pixels": 5,
+   "max_channel_difference": 8,
+   "box": [
+    72,
+    51,
+    72,
+    56
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 270,
+   "pixels": 17,
+   "max_channel_difference": 36,
+   "box": [
+    32,
+    84,
+    302,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 276,
+   "pixels": 28,
+   "max_channel_difference": 24,
+   "box": [
+    4,
+    2,
+    4,
+    127
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 331,
+   "pixels": 273,
+   "max_channel_difference": 151,
+   "box": [
+    141,
+    2,
+    142,
+    167
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 417,
+   "pixels": 5,
+   "max_channel_difference": 28,
+   "box": [
+    12,
+    47,
+    12,
+    53
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 455,
+   "pixels": 32,
+   "max_channel_difference": 32,
+   "box": [
+    241,
+    0,
+    241,
+    94
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 472,
+   "pixels": 2,
+   "max_channel_difference": 12,
+   "box": [
+    182,
+    57,
+    182,
+    63
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 480,
+   "pixels": 100,
+   "max_channel_difference": 72,
+   "box": [
+    90,
+    36,
+    154,
+    97
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 493,
+   "pixels": 42,
+   "max_channel_difference": 51,
+   "box": [
+    187,
+    14,
+    299,
+    82
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 497,
+   "pixels": 22,
+   "max_channel_difference": 20,
+   "box": [
+    216,
+    23,
+    216,
+    60
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 498,
+   "pixels": 22,
+   "max_channel_difference": 20,
+   "box": [
+    180,
+    23,
+    216,
+    60
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 502,
+   "pixels": 40,
+   "max_channel_difference": 28,
+   "box": [
+    123,
+    13,
+    296,
+    89
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 504,
+   "pixels": 74,
+   "max_channel_difference": 28,
+   "box": [
+    123,
+    11,
+    214,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 506,
+   "pixels": 51,
+   "max_channel_difference": 20,
+   "box": [
+    183,
+    7,
+    275,
+    67
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 507,
+   "pixels": 2,
+   "max_channel_difference": 16,
+   "box": [
+    175,
+    54,
+    175,
+    55
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 525,
+   "pixels": 50,
+   "max_channel_difference": 20,
+   "box": [
+    144,
+    12,
+    238,
+    89
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 526,
+   "pixels": 2,
+   "max_channel_difference": 16,
+   "box": [
+    194,
+    53,
+    194,
+    57
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 529,
+   "pixels": 41,
+   "max_channel_difference": 20,
+   "box": [
+    144,
+    27,
+    295,
+    102
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 554,
+   "pixels": 37,
+   "max_channel_difference": 52,
+   "box": [
+    245,
+    26,
+    245,
+    62
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 569,
+   "pixels": 5,
+   "max_channel_difference": 7,
+   "box": [
+    166,
+    88,
+    166,
+    92
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 591,
+   "pixels": 3,
+   "max_channel_difference": 68,
+   "box": [
+    171,
+    104,
+    171,
+    106
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 594,
+   "pixels": 234,
+   "max_channel_difference": 52,
+   "box": [
+    173,
+    0,
+    174,
+    145
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 598,
+   "pixels": 17,
+   "max_channel_difference": 84,
+   "box": [
+    170,
+    0,
+    171,
+    119
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 602,
+   "pixels": 38,
+   "max_channel_difference": 60,
+   "box": [
+    144,
+    1,
+    191,
+    128
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 638,
+   "pixels": 26,
+   "max_channel_difference": 32,
+   "box": [
+    184,
+    3,
+    202,
+    45
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 648,
+   "pixels": 47,
+   "max_channel_difference": 32,
+   "box": [
+    65,
+    0,
+    294,
+    104
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 667,
+   "pixels": 25,
+   "max_channel_difference": 80,
+   "box": [
+    70,
+    134,
+    70,
+    167
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 675,
+   "pixels": 48,
+   "max_channel_difference": 32,
+   "box": [
+    152,
+    13,
+    316,
+    84
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 677,
+   "pixels": 1,
+   "max_channel_difference": 32,
+   "box": [
+    278,
+    3,
+    278,
+    3
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 709,
+   "pixels": 23,
+   "max_channel_difference": 71,
+   "box": [
+    77,
+    101,
+    78,
+    121
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 730,
+   "pixels": 17443,
+   "max_channel_difference": 248,
+   "box": [
+    0,
+    106,
+    319,
+    167
+   ],
+   "cause": "renderer: the floor under the player drawn with the wrong flat (open bug; DDD.md)"
+  },
+  {
+   "tic": 755,
+   "pixels": 51,
+   "max_channel_difference": 32,
+   "box": [
+    20,
+    84,
+    319,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 819,
+   "pixels": 32,
+   "max_channel_difference": 48,
+   "box": [
+    187,
+    3,
+    235,
+    45
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 820,
+   "pixels": 15,
+   "max_channel_difference": 32,
+   "box": [
+    16,
+    84,
+    263,
+    98
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 831,
+   "pixels": 27,
+   "max_channel_difference": 16,
+   "box": [
+    315,
+    72,
+    315,
+    105
+   ],
+   "cause": "libm: on this Mac only; Sail on Morrobay draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 852,
+   "pixels": 20,
+   "max_channel_difference": 56,
+   "box": [
+    147,
+    27,
+    147,
+    46
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 950,
+   "pixels": 40,
+   "max_channel_difference": 36,
+   "box": [
+    208,
+    57,
+    208,
+    96
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 971,
+   "pixels": 2,
+   "max_channel_difference": 8,
+   "box": [
+    278,
+    81,
+    278,
+    82
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 990,
+   "pixels": 7,
+   "max_channel_difference": 28,
+   "box": [
+    183,
+    84,
+    319,
+    84
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  }
+ ]
+}

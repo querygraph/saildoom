@@ -1,0 +1,1247 @@
+{
+ "against": "cedardb-run1.json",
+ "sail_runs": [
+  "sail-run1.json",
+  "sail-run2.json",
+  "sail-run3.json"
+ ],
+ "note": "Sail's three runs drew the same frames; these are the frames that differ from CedarDB's, saved by `driver.py frames` and checked against the digests the timed runs recorded.",
+ "frames": [
+  {
+   "tic": 47,
+   "pixels": 28,
+   "max_channel_difference": 31,
+   "box": [
+    170,
+    72,
+    171,
+    85
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 55,
+   "pixels": 28,
+   "max_channel_difference": 24,
+   "box": [
+    166,
+    72,
+    167,
+    85
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 93,
+   "pixels": 39,
+   "max_channel_difference": 68,
+   "box": [
+    3,
+    67,
+    123,
+    135
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 100,
+   "pixels": 10,
+   "max_channel_difference": 8,
+   "box": [
+    46,
+    84,
+    296,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 108,
+   "pixels": 8,
+   "max_channel_difference": 8,
+   "box": [
+    51,
+    63,
+    51,
+    95
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 160,
+   "pixels": 12,
+   "max_channel_difference": 24,
+   "box": [
+    4,
+    84,
+    308,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 205,
+   "pixels": 1,
+   "max_channel_difference": 8,
+   "box": [
+    32,
+    84,
+    32,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 217,
+   "pixels": 28,
+   "max_channel_difference": 71,
+   "box": [
+    200,
+    61,
+    200,
+    88
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 225,
+   "pixels": 2,
+   "max_channel_difference": 8,
+   "box": [
+    23,
+    84,
+    31,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 226,
+   "pixels": 18,
+   "max_channel_difference": 8,
+   "box": [
+    65,
+    52,
+    65,
+    100
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 235,
+   "pixels": 3,
+   "max_channel_difference": 8,
+   "box": [
+    3,
+    84,
+    14,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 243,
+   "pixels": 1,
+   "max_channel_difference": 56,
+   "box": [
+    299,
+    89,
+    299,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 245,
+   "pixels": 15,
+   "max_channel_difference": 16,
+   "box": [
+    198,
+    97,
+    198,
+    166
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 331,
+   "pixels": 273,
+   "max_channel_difference": 151,
+   "box": [
+    141,
+    2,
+    142,
+    167
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 335,
+   "pixels": 19,
+   "max_channel_difference": 32,
+   "box": [
+    126,
+    84,
+    301,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 399,
+   "pixels": 26,
+   "max_channel_difference": 20,
+   "box": [
+    116,
+    25,
+    125,
+    90
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 417,
+   "pixels": 5,
+   "max_channel_difference": 28,
+   "box": [
+    12,
+    47,
+    12,
+    53
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 422,
+   "pixels": 4,
+   "max_channel_difference": 20,
+   "box": [
+    134,
+    22,
+    183,
+    95
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 450,
+   "pixels": 29,
+   "max_channel_difference": 20,
+   "box": [
+    125,
+    27,
+    235,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 455,
+   "pixels": 32,
+   "max_channel_difference": 32,
+   "box": [
+    241,
+    0,
+    241,
+    94
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 472,
+   "pixels": 2,
+   "max_channel_difference": 12,
+   "box": [
+    182,
+    57,
+    182,
+    63
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 480,
+   "pixels": 100,
+   "max_channel_difference": 72,
+   "box": [
+    90,
+    36,
+    154,
+    97
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 494,
+   "pixels": 29,
+   "max_channel_difference": 20,
+   "box": [
+    85,
+    23,
+    268,
+    83
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 497,
+   "pixels": 22,
+   "max_channel_difference": 20,
+   "box": [
+    216,
+    23,
+    216,
+    60
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 499,
+   "pixels": 17,
+   "max_channel_difference": 44,
+   "box": [
+    194,
+    23,
+    232,
+    65
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 502,
+   "pixels": 23,
+   "max_channel_difference": 64,
+   "box": [
+    284,
+    13,
+    296,
+    80
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 503,
+   "pixels": 35,
+   "max_channel_difference": 32,
+   "box": [
+    189,
+    23,
+    231,
+    63
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 505,
+   "pixels": 34,
+   "max_channel_difference": 64,
+   "box": [
+    273,
+    16,
+    283,
+    67
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 506,
+   "pixels": 51,
+   "max_channel_difference": 20,
+   "box": [
+    183,
+    7,
+    275,
+    67
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 507,
+   "pixels": 2,
+   "max_channel_difference": 16,
+   "box": [
+    175,
+    54,
+    175,
+    55
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 518,
+   "pixels": 36,
+   "max_channel_difference": 28,
+   "box": [
+    145,
+    12,
+    160,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 521,
+   "pixels": 42,
+   "max_channel_difference": 24,
+   "box": [
+    160,
+    12,
+    311,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 523,
+   "pixels": 26,
+   "max_channel_difference": 28,
+   "box": [
+    144,
+    28,
+    144,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 524,
+   "pixels": 9,
+   "max_channel_difference": 16,
+   "box": [
+    160,
+    12,
+    253,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 525,
+   "pixels": 50,
+   "max_channel_difference": 20,
+   "box": [
+    144,
+    12,
+    238,
+    89
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 526,
+   "pixels": 2,
+   "max_channel_difference": 16,
+   "box": [
+    194,
+    53,
+    194,
+    57
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 529,
+   "pixels": 41,
+   "max_channel_difference": 20,
+   "box": [
+    144,
+    27,
+    295,
+    102
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 530,
+   "pixels": 87,
+   "max_channel_difference": 172,
+   "box": [
+    21,
+    4,
+    306,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 531,
+   "pixels": 42,
+   "max_channel_difference": 24,
+   "box": [
+    144,
+    27,
+    216,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 532,
+   "pixels": 25,
+   "max_channel_difference": 20,
+   "box": [
+    238,
+    23,
+    295,
+    102
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 533,
+   "pixels": 17,
+   "max_channel_difference": 24,
+   "box": [
+    160,
+    13,
+    216,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 536,
+   "pixels": 64,
+   "max_channel_difference": 28,
+   "box": [
+    144,
+    19,
+    238,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 537,
+   "pixels": 33,
+   "max_channel_difference": 28,
+   "box": [
+    144,
+    23,
+    144,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 538,
+   "pixels": 44,
+   "max_channel_difference": 28,
+   "box": [
+    144,
+    19,
+    257,
+    85
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 539,
+   "pixels": 100,
+   "max_channel_difference": 32,
+   "box": [
+    144,
+    4,
+    295,
+    102
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 541,
+   "pixels": 2,
+   "max_channel_difference": 20,
+   "box": [
+    211,
+    35,
+    211,
+    37
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 542,
+   "pixels": 23,
+   "max_channel_difference": 24,
+   "box": [
+    189,
+    24,
+    310,
+    102
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 543,
+   "pixels": 51,
+   "max_channel_difference": 24,
+   "box": [
+    160,
+    13,
+    310,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 544,
+   "pixels": 9,
+   "max_channel_difference": 12,
+   "box": [
+    104,
+    34,
+    104,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 545,
+   "pixels": 25,
+   "max_channel_difference": 20,
+   "box": [
+    160,
+    4,
+    211,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 547,
+   "pixels": 31,
+   "max_channel_difference": 132,
+   "box": [
+    30,
+    12,
+    286,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 550,
+   "pixels": 44,
+   "max_channel_difference": 24,
+   "box": [
+    52,
+    17,
+    306,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 552,
+   "pixels": 22,
+   "max_channel_difference": 32,
+   "box": [
+    165,
+    10,
+    195,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 553,
+   "pixels": 13,
+   "max_channel_difference": 36,
+   "box": [
+    165,
+    10,
+    265,
+    89
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 554,
+   "pixels": 58,
+   "max_channel_difference": 52,
+   "box": [
+    149,
+    24,
+    245,
+    97
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 556,
+   "pixels": 13,
+   "max_channel_difference": 32,
+   "box": [
+    227,
+    11,
+    227,
+    40
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 557,
+   "pixels": 54,
+   "max_channel_difference": 20,
+   "box": [
+    165,
+    4,
+    247,
+    88
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 559,
+   "pixels": 38,
+   "max_channel_difference": 20,
+   "box": [
+    149,
+    3,
+    223,
+    98
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 560,
+   "pixels": 21,
+   "max_channel_difference": 20,
+   "box": [
+    120,
+    34,
+    319,
+    103
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 561,
+   "pixels": 37,
+   "max_channel_difference": 20,
+   "box": [
+    165,
+    0,
+    249,
+    91
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 562,
+   "pixels": 40,
+   "max_channel_difference": 36,
+   "box": [
+    148,
+    12,
+    271,
+    100
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 564,
+   "pixels": 19,
+   "max_channel_difference": 20,
+   "box": [
+    165,
+    0,
+    194,
+    102
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 565,
+   "pixels": 5,
+   "max_channel_difference": 12,
+   "box": [
+    4,
+    84,
+    144,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 566,
+   "pixels": 37,
+   "max_channel_difference": 24,
+   "box": [
+    223,
+    11,
+    275,
+    59
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 568,
+   "pixels": 10,
+   "max_channel_difference": 30,
+   "box": [
+    225,
+    14,
+    271,
+    30
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 574,
+   "pixels": 58,
+   "max_channel_difference": 26,
+   "box": [
+    144,
+    3,
+    247,
+    99
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 591,
+   "pixels": 3,
+   "max_channel_difference": 68,
+   "box": [
+    171,
+    104,
+    171,
+    106
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 594,
+   "pixels": 234,
+   "max_channel_difference": 52,
+   "box": [
+    173,
+    0,
+    174,
+    145
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 598,
+   "pixels": 17,
+   "max_channel_difference": 84,
+   "box": [
+    170,
+    0,
+    171,
+    119
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 602,
+   "pixels": 23,
+   "max_channel_difference": 60,
+   "box": [
+    144,
+    106,
+    144,
+    128
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 638,
+   "pixels": 26,
+   "max_channel_difference": 32,
+   "box": [
+    184,
+    3,
+    202,
+    45
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 639,
+   "pixels": 15,
+   "max_channel_difference": 20,
+   "box": [
+    272,
+    51,
+    272,
+    74
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 640,
+   "pixels": 12,
+   "max_channel_difference": 48,
+   "box": [
+    18,
+    84,
+    317,
+    97
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 646,
+   "pixels": 1,
+   "max_channel_difference": 8,
+   "box": [
+    185,
+    9,
+    185,
+    9
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 647,
+   "pixels": 4,
+   "max_channel_difference": 24,
+   "box": [
+    226,
+    0,
+    227,
+    2
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 648,
+   "pixels": 47,
+   "max_channel_difference": 32,
+   "box": [
+    65,
+    0,
+    294,
+    104
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 667,
+   "pixels": 25,
+   "max_channel_difference": 80,
+   "box": [
+    70,
+    134,
+    70,
+    167
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 675,
+   "pixels": 48,
+   "max_channel_difference": 32,
+   "box": [
+    152,
+    13,
+    316,
+    84
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 677,
+   "pixels": 1,
+   "max_channel_difference": 32,
+   "box": [
+    278,
+    3,
+    278,
+    3
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 685,
+   "pixels": 17,
+   "max_channel_difference": 20,
+   "box": [
+    17,
+    84,
+    319,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 689,
+   "pixels": 5,
+   "max_channel_difference": 20,
+   "box": [
+    95,
+    115,
+    95,
+    120
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 691,
+   "pixels": 15,
+   "max_channel_difference": 16,
+   "box": [
+    16,
+    73,
+    16,
+    93
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 693,
+   "pixels": 18,
+   "max_channel_difference": 24,
+   "box": [
+    124,
+    0,
+    172,
+    27
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 694,
+   "pixels": 39,
+   "max_channel_difference": 20,
+   "box": [
+    103,
+    32,
+    145,
+    90
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 709,
+   "pixels": 61,
+   "max_channel_difference": 71,
+   "box": [
+    77,
+    21,
+    306,
+    121
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 730,
+   "pixels": 17443,
+   "max_channel_difference": 248,
+   "box": [
+    0,
+    106,
+    319,
+    167
+   ],
+   "cause": "renderer: the floor under the player drawn with the wrong flat (open bug; DDD.md)"
+  },
+  {
+   "tic": 764,
+   "pixels": 5,
+   "max_channel_difference": 12,
+   "box": [
+    134,
+    59,
+    134,
+    86
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 797,
+   "pixels": 50,
+   "max_channel_difference": 40,
+   "box": [
+    278,
+    30,
+    278,
+    86
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 819,
+   "pixels": 32,
+   "max_channel_difference": 48,
+   "box": [
+    187,
+    3,
+    235,
+    45
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 820,
+   "pixels": 15,
+   "max_channel_difference": 32,
+   "box": [
+    16,
+    84,
+    263,
+    98
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 821,
+   "pixels": 34,
+   "max_channel_difference": 28,
+   "box": [
+    203,
+    0,
+    287,
+    72
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 824,
+   "pixels": 3,
+   "max_channel_difference": 16,
+   "box": [
+    35,
+    34,
+    35,
+    36
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 830,
+   "pixels": 24,
+   "max_channel_difference": 132,
+   "box": [
+    11,
+    84,
+    272,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 852,
+   "pixels": 20,
+   "max_channel_difference": 56,
+   "box": [
+    147,
+    27,
+    147,
+    46
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 875,
+   "pixels": 1,
+   "max_channel_difference": 16,
+   "box": [
+    149,
+    84,
+    149,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 946,
+   "pixels": 91,
+   "max_channel_difference": 228,
+   "box": [
+    66,
+    0,
+    130,
+    128
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 950,
+   "pixels": 40,
+   "max_channel_difference": 36,
+   "box": [
+    208,
+    57,
+    208,
+    96
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 965,
+   "pixels": 54,
+   "max_channel_difference": 20,
+   "box": [
+    7,
+    21,
+    7,
+    108
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 967,
+   "pixels": 30,
+   "max_channel_difference": 20,
+   "box": [
+    8,
+    21,
+    8,
+    114
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 971,
+   "pixels": 2,
+   "max_channel_difference": 8,
+   "box": [
+    278,
+    81,
+    278,
+    82
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 979,
+   "pixels": 140,
+   "max_channel_difference": 240,
+   "box": [
+    247,
+    0,
+    282,
+    154
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  },
+  {
+   "tic": 990,
+   "pixels": 7,
+   "max_channel_difference": 28,
+   "box": [
+    183,
+    84,
+    319,
+    84
+   ],
+   "cause": "libm: on both Macs; the last bit of a libm function (Apple's against CedarDB's glibc) moving a value across an integer (DDD.md)"
+  },
+  {
+   "tic": 1060,
+   "pixels": 1,
+   "max_channel_difference": 8,
+   "box": [
+    305,
+    84,
+    305,
+    84
+   ],
+   "cause": "libm: on this Mac only; Sail on Capitola draws this frame exactly as CedarDB does, with the same code and data, so the platform's math library makes the difference"
+  }
+ ]
+}
