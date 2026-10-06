@@ -62,7 +62,7 @@ def register(b):
         eng = engine_box["engine"]
         cmd_sql = f"""SELECT 1 AS tic, skill, skill_bit, move_fwd, move_strafe, running, turn_degrees,
                              attack_held, weapon_switch_to, use_requested
-                      FROM parquet.`{s.paths["game_tic_commands"]}`
+                      FROM parquet.`{s.path("game_tic_commands")}`
                       WHERE map_id = {map_id} AND player_thing_id = {player}"""
         t0 = time.perf_counter()
         out = eng.run(map_id, player, skill, cmd_sql, b.sequence("sound_events") + 1)

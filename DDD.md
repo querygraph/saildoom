@@ -162,6 +162,24 @@ rows it computed for one of its shared CTEs, kept in a slot on the server).
 - **A shared CTE's reset clears state that every copy of the plan shares**
   (the fork's `WithSharedCtesExec`), so the next run's reset cannot be
   prepared while the current run is going.
+- **A hash join's build side measures its memory the expensive way.** The
+  build reserves memory with `get_record_batch_memory_size`, which converts
+  every column of the build batch to `ArrayData`. In SailDoom's tic, 623
+  hash joins (363 with no build rows, 181 with under 10) spent 65 ms of CPU
+  building and accounted 96 MB, joins of one build row reporting 1 to 11 MB
+  (the whole buffers the row is sliced from). The fork's vendored
+  datafusion-common reads the buffers of the common array types directly
+  (still counting each once): a tic run 24.5 ms to 22.6 ms, with the next
+  point.
+- **Without statistics a join can build on its larger side**: 45 of the tic's
+  joins did. The fork's slots report their row count (inexact) to the
+  planner.
+- **Most projection pairs cannot be merged for free**: of 147
+  projection-over-projection pairs in the tic, 7 had a side that only picks,
+  renames or casts columns; in the others both sides compute (DataFusion's
+  common-subexpression projections among them). A merge must also leave alone
+  projections with lambda variables, which resolve against the batch their
+  own projection sees (`map_filter` broke when a first version merged them).
 - **`HashJoinExec` builds its hash table again on every execution** (as it
   must after a reset); with hundreds of joins over small inputs this is a
   visible share of running a cached plan.

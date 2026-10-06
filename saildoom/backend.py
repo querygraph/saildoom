@@ -87,6 +87,7 @@ class Store:
         return sorted(self.paths)
 
     def path(self, name):
+        self.wait(self.paths[name])
         return self.paths[name]
 
     def write(self, name, sql, params=None):
@@ -106,7 +107,12 @@ class Store:
 
     def write_arrow(self, name, table):
         path = self._next_version(name, ".parquet")
-        pq.write_table(table, path)
+        if not hasattr(self, "pool"):
+            from concurrent.futures import ThreadPoolExecutor
+            self.pool = ThreadPoolExecutor(max_workers=8)
+        # Written in the background, as write_splits does: a Sail read of the
+        # path waits for it.
+        self.pending[str(path)] = [self.pool.submit(pq.write_table, table, path)]
         self.paths[name] = str(path)
         self.held[name] = (str(path), table)
         self.dirty.add(name)
@@ -135,26 +141,24 @@ class Store:
         from concurrent.futures import ThreadPoolExecutor
         if not hasattr(self, "pool"):
             self.pool = ThreadPoolExecutor(max_workers=8)
-        jobs = []
         for name, part, rows, rest in writes:
             path = self._next_version(name)
-            path.mkdir(parents=True)
             split = self.splits.get(name)
             if split is not None and split[0] == self.paths[name] and split[1] == part:
-                rest_file, rest_rows = split[2], split[3]
-                os.link(rest_file, path / "rest.parquet")
+                rest_file, rest_rows, rest_new = split[2], split[3], None
             else:
-                rest_rows = rest()
-                jobs.append((rest_rows, path / "rest.parquet"))
-            jobs.append((rows, path / "part.parquet"))
+                rest_file, rest_rows = None, rest()
+                rest_new = rest_rows
             self.splits[name] = (str(path), part, str(path / "rest.parquet"), rest_rows)
             self.paths[name] = str(path)
             self.held[name] = (str(path), pa.concat_tables([rest_rows, rows]))
             self.dirty.add(name)
-        # The files are written in the background: readers in this process use
-        # the held tables, and a Sail read of a path waits for it (wait()).
-        for rows, file in jobs:
-            self.pending.setdefault(str(file.parent), []).append(self.pool.submit(pq.write_table, rows, file))
+            # The version's directory and files are made in the background:
+            # readers in this process use the held tables, and a Sail read of a
+            # path waits for it (wait()). The previous version's rest.parquet
+            # is linked, so it must be there first.
+            previous = self.pending.pop(str(Path(rest_file).parent), []) if rest_file else []
+            self.pending[str(path)] = [self.pool.submit(_write_version, path, rows, rest_new, rest_file, previous)]
         self._save()
         return [self.paths[name] for name, *_ in writes]
 
@@ -183,6 +187,10 @@ class Store:
         return [str(path) for _, _, path in targets]
 
     def arrow_schema(self, name):
+        held = self.held.get(name)
+        if held is not None and held[0] == self.paths[name]:
+            return held[1].schema
+        self.wait(self.paths[name])
         p = Path(self.paths[name])
         return pq.read_schema(p) if p.is_file() else pq.ParquetDataset(str(p)).schema
 
@@ -190,6 +198,7 @@ class Store:
         held = self.held.get(name)
         if held is not None and held[0] == self.paths[name]:
             return held[1]
+        self.wait(self.paths[name])
         p = Path(self.paths[name])
         table = pq.read_table(p) if p.is_file() else pq.read_table(str(p))
         self.held[name] = (self.paths[name], table)
@@ -407,6 +416,19 @@ def sql_type(t):
     if pa.types.is_timestamp(t):
         return "TIMESTAMP"
     raise TypeError(t)
+
+
+def _write_version(path, rows, rest_rows, rest_file, previous):
+    """A split version's directory: part.parquet, and rest.parquet written or
+    linked from the previous version (whose writes are waited for first)."""
+    for future in previous:
+        future.result()
+    path.mkdir(parents=True)
+    if rest_rows is not None:
+        pq.write_table(rest_rows, path / "rest.parquet")
+    else:
+        os.link(rest_file, path / "rest.parquet")
+    pq.write_table(rows, path / "part.parquet")
 
 
 def fresh_store(spark, root, initial):

@@ -263,7 +263,10 @@ def upload(spark, rows):
     # Every field nullable: a table read from a file and one built from a
     # result differ only in these flags, and a slot whose schema changes is a
     # new slot, which clears the server's plan cache.
-    rows = rows.cast(pa.schema([f.with_nullable(True) for f in rows.schema]))
+    nullable = pa.schema([f.with_nullable(True) for f in rows.schema])
+    if nullable != rows.schema:
+        # Only the flags change: the same columns, no cast.
+        rows = pa.Table.from_arrays(rows.columns, schema=nullable)
     if rows.num_rows:
         return spark.createDataFrame(rows)
     # An empty table goes the same way, as one row of nulls filtered out: an

@@ -99,13 +99,13 @@ class TicEngine:
         # The definition tables are slots too: read from their files once, then
         # served from memory on every run (a plain view over a file is read
         # again by every run of the kept plan).
-        static = [(name, s.paths[name]) for name in self.static if self.loaded.get(name) != s.paths[name]]
+        static = [(name, s.path(name)) for name in self.static if self.loaded.get(name) != s.paths[name]]
         list(self.pool.map(lambda f: self._slot(f[0], f"SELECT * FROM parquet.`{f[1]}`"), static))
         for name, path in static:
             self.loaded[name] = path
         if map_id != self.map_id:
             for name in STATIC_BY_MAP:
-                self._slot(name, f"SELECT * FROM parquet.`{s.paths[name]}` WHERE map_id = {map_id}")
+                self._slot(name, f"SELECT * FROM parquet.`{s.path(name)}` WHERE map_id = {map_id}")
             self.map_id = map_id
             for name in [n for n in self.loaded if n.startswith("rec_") or n == "render_segs"]:
                 del self.loaded[name]
@@ -287,15 +287,17 @@ def write_kinds(store, world, out, map_id, player, last):
     carried over from the last version without being rewritten
     (Store.write_split)."""
     writes = []
-    markers = out.filter(pc.equal(out["tic"], -1))
-    changed = set(markers["kind"].to_pylist())
-    out = out.filter(pc.not_equal(out["tic"], -1))
+    # Filtering the whole result per kind would copy every kind's struct
+    # columns; each kind's rows are taken from its own column only.
+    kinds = out["kind"].combine_chunks()
+    marker = pc.equal(out["tic"].combine_chunks(), -1)
+    changed = set(kinds.filter(marker).to_pylist())
     for kind, (col, table) in world.kinds.items():
         if kind not in changed:
             continue
         names = [n for n, _ in world.fields[kind] if n not in SKIP_FIELDS]
-        rows = out.filter(pc.equal(out["kind"], kind)).column(col)
-        rows = rows.combine_chunks() if isinstance(rows, pa.ChunkedArray) else rows
+        mask = pc.and_(pc.equal(kinds, kind), pc.invert(marker))
+        rows = out.column(col).combine_chunks().filter(mask)
         schema = pa.schema([pa.field(n, rows.type.field(n).type) for n in names])
         new = pa.table({n: rows.field(n) for n in names}) if len(rows) else schema.empty_table()
         before = last.get(kind)
