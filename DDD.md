@@ -10,19 +10,23 @@ work goes on; [NOTES.md](NOTES.md) has the measurements in context.
 
 | Where | What | Status |
 |---|---|---|
-| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | A `CASE` over arrays of structs panics when only a later branch has a NULL item. | Issue, open. The renderer puts the nullable branch first. |
-| [apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054) | `AggregateExec`'s MIN/MAX dynamic filter survives `reset_state`, so a recursive term's later iterations scan with the first iteration's bound (a barrel's blast found no blast radius). | Issue, open. The fork turns that pushdown off in plans with a recursive query. |
-| [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | Wrong rows: `eliminate_cross_join` with `extract_equijoin_predicate` drops an equi-join key whose one side spans two cross-joined relations. Reproduced on Sail main and DataFusion main 8248a57969. | Issue, open. The game writes one branch per respawn fog instead. |
+| [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | A `CASE` over arrays of structs panics when only a later branch has a NULL item. | Issue, open; a Sail maintainer points to lakehq/sail#2643 as the fix. The renderer puts the nullable branch first. |
+| [apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054) | `AggregateExec`'s MIN/MAX dynamic filter survives `reset_state`, so a recursive term's later iterations scan with the first iteration's bound (a barrel's blast found no blast radius). | Issue, open. Suggested fix: recreate the aggregate's dynamic filter in `reset_state`. The fork turns that pushdown off in plans with a recursive query. |
+| [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | Wrong rows: `eliminate_cross_join` with `extract_equijoin_predicate` drops an equi-join key whose one side spans two cross-joined relations. Reproduced on Sail main and DataFusion main 8248a57969: a query joining `a` cross join `k` to `b` on `b.t = a.t AND b.id = CASE k.k WHEN 0 THEN a.x ELSE a.y END` returns 42 rows instead of 2, and is correct with either rule removed. | Issue, open. The game writes one branch per respawn fog instead. |
 | [apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065) | Physical planning is slow, and grows faster than the query, with many typed NULL struct literals: `ScalarValue::eq` compares nested values through arrow's `ArrayData` conversion, and `EquivalenceGroup::add_constant` compares each new constant with every class. | Issue, open. |
-| [apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066) | The fix for #26065: compare lengths and data types (and pointer identity) before arrow's array equality. 35 struct columns x 20 fields: 862 ms to 147 ms. | PR, open. Vendored in the fork. |
-| [apache/datafusion#26071](https://github.com/apache/datafusion/issues/26071) | Every operator's `BaselineMetrics` computes `output_bytes` for every batch with `get_record_batch_memory_size`, which converts each column and nested child to `ArrayData` and hashes every buffer: 15-22 µs a batch for 35 struct columns against 1.5 µs for summing `get_array_memory_size`; about 12% of running SailDoom's cached tic. | Issue, open. The fork vendors datafusion-physical-expr-common with the sum. |
+| [apache/datafusion#26066](https://github.com/apache/datafusion/pull/26066) | The fix for #26065: compare lengths and data types (and pointer identity) before arrow's array equality. `create_physical_plan`, main against the PR: 10 x 20 struct columns 31 to 17 ms, 20 x 20 179 to 47 ms, 35 x 20 862 to 147 ms, 35 x 40 1,766 to 253 ms; planning SailDoom's tic 6.5 s to 4.7 s. | PR, open, awaiting review (only the first CI workflow has run). Vendored in the fork. |
+| [apache/datafusion#26071](https://github.com/apache/datafusion/issues/26071) | Every operator's `BaselineMetrics` computes `output_bytes` for every batch with `get_record_batch_memory_size`, which converts each column and nested child to `ArrayData` and hashes every buffer: 15-22 µs a batch for 35 struct columns against 1.5 µs for summing `get_array_memory_size`; per batch: 35 x 20 struct fields, 100 rows 21.9 µs against 1.6 µs; 4,000 rows 15.1 against 1.5; 5 x 5, 4,000 rows 0.58 against 0.05. About 12% of running SailDoom's cached tic; the sum took a run from 40 ms to 34 ms. | Issue, open. The fork vendors datafusion-physical-expr-common with the sum. |
 
 Fork commits (querygraph/sail `work/recursive-cte`): recursive CTEs, shared
 CTEs, the fixes the game found (CTE inlining of work-table readers, shared CTE
 reset ownership, aggregate dynamic filters in recursive plans), the vendored
 datafusion-common and datafusion-physical-expr-common, plan reuse (slot views,
 plan cache, target partitions), and result slots (a query's result, or the
-rows it computed for one of its shared CTEs, kept in a slot on the server).
+rows it computed for one of its shared CTEs, kept in a slot on the server),
+operator-count reductions, and slot inputs as query arguments. The fork is
+based on Sail main `d29516a74`; its 18 commits on `work/recursive-cte` run
+from `150345a83` (recursive CTEs) to `06146a94b` (slot inputs as query
+arguments). The branch `saildoom` on querygraph/sail is the same commit.
 
 ## The fork's Sail-specific conventions
 
@@ -56,13 +60,26 @@ In the server's environment:
 
 5. `SAIL_EXECUTION_METRICS=off`: operators register no execution metrics and
    do not time their polls (read once per process); `EXPLAIN ANALYZE` then
-   shows none.
+   shows none. The fork's function feature tests: 5,375 pass with it off
+   (three EXPLAIN tests that expect metrics fail), all 5,378 with it on.
+   Measured on the same binary, a tic's run 26.2 ms with metrics, 22.8 ms
+   without.
 
 In a query's named arguments:
 
 6. Arguments named `__slot_NAME` whose value is an Arrow IPC stream (binary)
    fill slot NAME before a cached plan runs, and are left out of the plan
    cache's key: a query carries its own inputs in one request.
+
+Spark-compatible counterparts (see `docs/reports/sail-findings.md`): slot
+views resemble `CACHE TABLE`/`persist` (no-ops in Sail today) and Spark
+Connect's cached relations; `targetPartitions` resembles
+`spark.sql.shuffle.partitions` per session (which Sail ignores); `__slot_`
+arguments resemble parameterized queries (which carry scalars). The plan
+cache could become transparent if keyed on the relation plus the versions of
+the tables and views it reads. Result slots and the metrics switch have no
+Spark counterpart. Whether Spark's own recursive CTEs (SPARK-24497, the 4.x
+line) match the fork's has not been checked here.
 
 Changes that need no convention (they apply to every query): recursive CTEs
 and CTEs computed once when referenced more than once; column-only
@@ -103,7 +120,10 @@ planner; and the vendored DataFusion changes (nested scalar equality,
 - **CTE inlining.** Sail resolves a CTE into a plan subtree and copies it at
   every reference, and resolves every CTE in the `WITH` whether or not it is
   used. SQLDoom's renderer, inlined, was 8.4 MB of EXPLAIN text. The fork
-  computes a CTE referenced more than once only once.
+  computes a CTE referenced more than once only once. That is neutral on
+  TPC-DS SF1 (the 22 queries that reuse a CTE and 4 controls, identical
+  results): at that scale an inlined copy runs in parallel and streams, while
+  a shared result is collected first and replayed as one partition.
 - **Planning dominates small queries.** A frame was 0.7 s, almost all of it
   parsing (Sail's chumsky parser, about a third), physical planning (about a
   third) and logical optimization. About 58 µs per simple expression to parse
@@ -115,7 +135,8 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   levels 1.2 s, 100 levels 26 s.
 - **Every request formats its plans as strings** (initial logical, final
   logical, final physical) whether or not anything reads them: about 15% of
-  planning the tic. The fork skips them where nothing reads them.
+  planning the tic. The fork adds `resolve_and_plan_physical`, which skips
+  them, for the callers that discard them.
 - **`spark.sql()` is a round trip that parses the SQL** (PySpark sends it as a
   `SqlCommand` first), and every DataFrame gets a new `plan_id`. Running the
   same DataFrame again avoids both.
@@ -123,8 +144,10 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   execution; for a plan of hundreds of small operators this costs more than
   the work.
 - **One partition per core** for a query over a few thousand rows: the
-  repartitioning costs more than the work (the tic: 680 ms at 10 partitions,
-  48 ms at 1).
+  repartitioning costs more than the work. The tic's cached run went from
+  680 ms to about 170 ms with the cache looked up before parsing, no tracing
+  and a reset that keeps properties, and from 170 ms to 48 ms with one
+  partition instead of ten.
 - **A cross join emits one batch per row of its left input**: `big CROSS JOIN
   one_row` produced 164,700 one-row batches. Put the one-row input first.
 - **A view over a file is read again by every run**, also of a cached plan:
@@ -162,6 +185,8 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   is parsed and resolved again, 1 s for the tic) and then casts the whole
   table it received to that schema. `df._to_table()[0]` returns the table as
   sent (`saildoom/engine.py` `fetch`).
+- A shorter GIL switch interval in the client (0.5 ms instead of 5) did not
+  speed up the tic inside SQLDoom's client.
 - Running a PySpark Connect script with `python -c` exits early (doctest
   detection); scripts must be files or heredocs. A scratch script named after
   a stdlib module (`concurrent.py`) deadlocked the client.
@@ -195,7 +220,9 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   batch**: `element_at(array(<256 literals>), i)` (SQLDoom's random number
   table) expands the list with `ScalarValue::to_array_of_size` per batch, for
   the lookup and again for Sail's bounds check (`array_length`): about 5% of
-  running the tic, 27 uses.
+  running the tic, 27 uses. As cached plans at 300 rows x 27 uses:
+  `element_at` 2.9 ms, a 256-way `CASE` 9.2 ms, a join with a 256-row table
+  2.7 ms, so the port keeps `element_at`.
 - **A plan of thousands of operators.** SailDoom's tic plans to 5,227
   physical operators: 1,884 projections, 858 `CooperativeExec`s, 830 shared
   CTE references, 630 hash joins. Sail reads a CTE through a projection at
@@ -221,8 +248,9 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   building and accounted 96 MB, joins of one build row reporting 1 to 11 MB
   (the whole buffers the row is sliced from). The fork's vendored
   datafusion-common reads the buffers of the common array types directly
-  (still counting each once): a tic run 24.5 ms to 22.6 ms, with the next
-  point.
+  (still counting each once; other types keep the `ArrayData` path, and the
+  crate's memory tests pass: shared buffers, nested arrays, nulls): a tic run
+  24.5 ms to 22.6 ms, with the next point.
 - **Without statistics a join can build on its larger side**: 45 of the tic's
   joins did. The fork's slots report their row count (inexact) to the
   planner.
@@ -232,6 +260,14 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   common-subexpression projections among them). A merge must also leave alone
   projections with lambda variables, which resolve against the batch their
   own projection sees (`map_filter` broke when a first version merged them).
+  The merge took the tic from 3,551 operators to 3,544.
+- **Suggested upstream** (DataFusion): reset with `replace_children(...,
+  Keep)` and skip unchanged subtrees; keep a node's properties when its
+  children's are unchanged (`has_same_children_properties`); a session-level
+  metrics level (none, summary, dev); gather from a scalar list without
+  broadcasting it; make in-memory sources `cooperative()` and declare
+  `SchedulingType::Cooperative`; coalesce, or collect the smaller side, in a
+  cross join. See `docs/reports/datafusion-findings.md`.
 - **`HashJoinExec` builds its hash table again on every execution** (as it
   must after a reset); with hundreds of joins over small inputs this is a
   visible share of running a cached plan.
@@ -268,6 +304,9 @@ carry the whole world from tic to tic, and it has costs:
 - **Packing makes typed NULL literals.** Each branch of the world's
   `UNION ALL` puts `CAST(NULL AS STRUCT<...>)` in 34 columns: 1,200 struct
   literals that physical planning compared pairwise (DataFusion #26065).
+  Rewriting the SQL to avoid them planned slower: each kind read from its own
+  table 15 s (the shared CTEs cost more than the pruned union), non-literal
+  placeholders 11.7 s, against 6.5 s.
 - **The fix would be a narrower layout**: a relation per kind, or an Arrow
   union type, which Spark SQL does not have. Either means restructuring all
   of the tic's SQL; the port works around the width instead.
@@ -369,3 +408,19 @@ layer on its own, with no game logic, as a cached query, to turn the 3 to
   bit can move a `FLOOR` across an integer (5 of 526 renderer frames, 1 to 8
   pixels each).
 - `-0.0` and `0.0` print differently and are compared as different values.
+
+## Progress and tooling notes
+
+- SQLDoom's client, steady play, by step: about 5 tics a second (frames on
+  kept plans), 8 (client queries from Arrow), 17.1 (definition tables as
+  slots), 21.6 (world kept in Sail), 22.1 (fewer operators), 25.1 (metrics
+  off), 29.9 (cheaper join builds, slot row counts), 32.3 (inputs as
+  arguments).
+- Considered and dropped: the game loop as one never-ending recursive query;
+  a recursive iteration costs about what a cached tic now does.
+- `client/render_screen.sql` is ported: 68 title, menu, load/save, help,
+  intermission and finale pages are byte-identical to CedarDB's
+  (`reference/check_screens.py`).
+- Traces record a rendered frame (bytea) by its SHA-256 digest, the bytes kept
+  beside the trace; an earlier recorder stored a `memoryview` repr, so the
+  campaign trace's one automap frame is unrecorded.

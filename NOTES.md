@@ -256,8 +256,9 @@ slot fills; about 4 ms of Python.
 ## Not done yet
 
 - Deathmatch and the multiplayer API (`39_mp.sql`, `42_api.sql`), item
-  respawn, and a trace for them; the menu screen renderer
-  (`client/render_screen.sql`) and level stats.
+  respawn, and a trace for them; level stats. (The menu screen renderer,
+  `client/render_screen.sql`, is ported: 68 pages byte-identical to
+  CedarDB's, `reference/check_screens.py`.)
 - Loading a WAD without CedarDB: the map and game tables come from CedarDB's
   export today.
 - One renderer frame of the 1,200-tic run (tic 730) draws the floor under the
