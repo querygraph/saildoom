@@ -4,7 +4,7 @@
 
 Doom now runs in SQL: [SQLDoom](https://github.com/cedardb/sqldoom), CedarDB's port, plays it on CedarDB, and [Sail runs it as a single query](https://github.com/querygraph/saildoom/blob/main/docs/blog/sail-runs-doom/post.md). Andy Grove, the creator of [Apache DataFusion](https://datafusion.apache.org/), named what comes next: **TPC-DOOM**, a benchmark of how fast your SQL database runs Doom. He proposed it as a joke. We took it at its word.
 
-TPC-DOOM 0.1 is now defined, with a driver, a first report on two databases and two machines, and a home at **[adversari.al/doom](https://adversari.al/doom)**. The name is Andy's; the credit for Doom in SQL is SQLDoom's. TPC-DOOM is not a benchmark of the Transaction Processing Performance Council and has no connection with it: "TPC" is the Council's trademark, and here it is the joke's.
+TPC-DOOM 0.1 is now defined, with a driver, a first report on two databases and two machines, and a home at [**adversari.al/doom**](https://adversari.al/doom). The name is Andy's; the credit for Doom in SQL is SQLDoom's. TPC-DOOM is not a benchmark of the Transaction Processing Performance Council and has no connection with it: "TPC" is the Council's trademark, and here it is the joke's.
 
 ## What it measures
 
