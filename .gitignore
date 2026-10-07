@@ -11,3 +11,4 @@ video/
 /data/api-store*/
 /.build/
 /.saildoom.env
+/cover/
