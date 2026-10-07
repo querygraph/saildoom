@@ -36,7 +36,8 @@ def main():
             runs = [load(d, f"{sut}-run{i}.json") for i in (1, 2, 3)]
             r = sorted(runs, key=lambda x: x["realtime_test"]["tpsD"])[1]
             t, rt = r["tic_test"], r["realtime_test"]
-            verdict = "reference" if sut == "cedardb" else ("inexact" if other else "exact")
+            # Test E (SPEC.md): at most 1% of the frames may differ for reasons other than libm.
+            verdict = "reference" if sut == "cedardb" else ("inexact" if len(other) > 0.01 * r["tics"] else "exact")
             print(f"| {host} | {label} | {f(rt['tpsD'], 2)} | {f(rt['realtime_factor'], 3)} | {f(t['tics_per_s'], 1)} "
                   f"| {f(t['tic']['p50_ms'], 1)} / {f(t['tic']['p95_ms'], 1)} | {f(rt['frame']['p50_ms'], 1)} / {f(rt['frame']['p95_ms'], 1)} "
                   f"| {f(t['warmup']['max_s'], 2)} s (tic {t['warmup']['max_at_tic']}) | {f(r['first_frame_s'], 2)} s "

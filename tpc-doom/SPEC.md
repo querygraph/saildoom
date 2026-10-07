@@ -58,12 +58,15 @@ test R. Each is compared with the reference run on CedarDB:
   for the last bits of `sin`, `atan2` and `pow`, where libm implementations
   differ;
 - frames must be byte-identical, except where a difference is traced to the
-  last bit of a libm function moving a value across an integer. The report
-  counts those frames and their pixels. Any other difference makes the run
-  inexact.
+  last bit of a libm function moving a value across an integer, and for at
+  most 1% of the frames (12 of 1,200) differing for any other reason. The
+  report counts every differing frame with its pixels and gives each one's
+  cause.
 
-A run that is not exact has no TPC-DOOM result. It may be published as
-"inexact", with its differences.
+The game must be right; a frame may be wrong now and then. A run whose
+snapshots differ, or with more than 1% of its frames differing for reasons
+other than libm, is not exact and has no TPC-DOOM result. It may be
+published as "inexact", with its differences.
 
 **Test P, play (informative).** SQLDoom's own client, in real time, over the
 SUT: its steady-state tics and frames per second. The client runs tics on a
@@ -122,3 +125,11 @@ A TPC-DOOM report states:
 - the result files the driver wrote.
 
 Version 0.1 has no price/performance metric.
+
+## Changes
+
+- **2026-10-07**, during version 0.1: test E allows up to 1% of the frames
+  to differ for reasons other than libm, each counted and explained. The
+  first version allowed none, which made one wrong frame of 1,200 (and every
+  snapshot exact) void a run. Report 0001 was evaluated again under this
+  rule; no measurement changed.

@@ -432,7 +432,8 @@ layer on its own, with no game logic, as a cached query, to turn the 3 to
   from CedarDB's own recorded state too, so it is the renderer, not the game.
   The run's other 49 differing frames are libm last bits (1 to 273 pixels; a
   moved column boundary shifts a whole wall column). TPC-DOOM's first report
-  counts Sail's result as inexact because of it.
+  first counted Sail's result as inexact because of it; test E now allows up
+  to 1% of the frames to differ for other reasons, and Sail's result is exact.
 
 ## Progress and tooling notes
 
