@@ -11,6 +11,7 @@ work goes on; [NOTES.md](NOTES.md) has the measurements in context.
 | Where | What | Status |
 |---|---|---|
 | [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | A `CASE` over arrays of structs panics when only a later branch has a NULL item. | Issue, open; a Sail maintainer points to lakehq/sail#2643 as the fix. Its other half, a batch that takes only a branch with non-null items, fails too (below); the renderer makes every branch's items nullable. |
+| [lakehq/sail#2747](https://github.com/lakehq/sail/issues/2747) | A `CASE` over arrays of structs fails when every row of a batch takes a branch whose items are non-null (the mirror of #2742). | Issue, open. The renderer makes every branch's items nullable. |
 | [apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054) | `AggregateExec`'s MIN/MAX dynamic filter survives `reset_state`, so a recursive term's later iterations scan with the first iteration's bound (a barrel's blast found no blast radius). | Issue, open. Suggested fix: recreate the aggregate's dynamic filter in `reset_state`. The fork turns that pushdown off in plans with a recursive query. |
 | [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | Wrong rows: `eliminate_cross_join` with `extract_equijoin_predicate` drops an equi-join key whose one side spans two cross-joined relations. Reproduced on Sail main and DataFusion main 8248a57969: a query joining `a` cross join `k` to `b` on `b.t = a.t AND b.id = CASE k.k WHEN 0 THEN a.x ELSE a.y END` returns 42 rows instead of 2, and is correct with either rule removed. | Issue, open. The game writes one branch per respawn fog instead. |
 | [apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065) | Physical planning is slow, and grows faster than the query, with many typed NULL struct literals: `ScalarValue::eq` compares nested values through arrow's `ArrayData` conversion, and `EquivalenceGroup::add_constant` compares each new constant with every class. | Issue, open. |
@@ -182,7 +183,8 @@ planner; and the vendored DataFusion changes (nested scalar equality,
   line reproduces it:
   `SELECT explode(CASE WHEN x < 0 THEN array(CASE WHEN x < -5 THEN named_struct('a', x) END) ELSE array(named_struct('a', 0)) END) FROM VALUES (1), (2) AS t(x)`.
   It is the other half of lakehq/sail#2742 (non-null items first and a NULL
-  item later panics), so no order of the branches is safe. The renderer
+  item later panics), so no order of the branches is safe. Filed as
+  [lakehq/sail#2747](https://github.com/lakehq/sail/issues/2747). The renderer
   failed on 1 or 2 frames a run, depending on how a frame's segs fell into
   batches; the frame was skipped. Recorded at first as a slot-fill bug: it
   is not one (Arrow's `cast` relabels nested nullability, and a test of the

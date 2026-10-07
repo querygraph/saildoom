@@ -358,6 +358,7 @@ three `EXPLAIN` tests that expect metrics fail; they pass with metrics on).
 | Where | What | Status |
 |---|---|---|
 | [lakehq/sail#2742](https://github.com/lakehq/sail/issues/2742) | `CASE` over arrays of structs panics when only a later branch has a NULL item | open; a Sail maintainer points to [lakehq/sail#2643](https://github.com/lakehq/sail/pull/2643) as the fix |
+| [lakehq/sail#2747](https://github.com/lakehq/sail/issues/2747) | `CASE` over arrays of structs fails when every row of a batch takes a branch with non-null items (the mirror of #2742) | open |
 | [apache/datafusion#26054](https://github.com/apache/datafusion/issues/26054) | `AggregateExec`'s MIN/MAX dynamic filter survives `reset_state` | open |
 | [apache/datafusion#26058](https://github.com/apache/datafusion/issues/26058) | wrong rows: an equi-join key spanning two cross-joined relations is dropped | open |
 | [apache/datafusion#26065](https://github.com/apache/datafusion/issues/26065) | slow physical planning with many typed NULL struct literals | open |
